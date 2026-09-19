@@ -238,8 +238,9 @@ fn make_entry(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::io::{Cursor, Write};
 
+    use sevenz_rust::{ArchiveEntry, ArchiveReader, ArchiveWriter, EncoderMethod, Password};
     use tempfile::TempDir;
     use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
@@ -313,6 +314,38 @@ mod tests {
         let report = scanner.scan(&collection, ScanMode::Full).unwrap();
         assert_eq!(report.entries.len(), 1);
         assert_eq!(report.entries[0].kind, EntryKind::SevenZEntry);
+        assert_eq!(
+            report.entries[0].hashes.sha1,
+            "a9993e364706816aba3e25717850c26c9cd0d89d"
+        );
+        assert!(!collection.join("game.rom").exists());
+    }
+
+    #[test]
+    fn hashes_zstd_7z_entries_without_extracting_them() {
+        let (_temp, collection, mut scanner) = setup();
+        let archive_path = collection.join("zstd-games.7z");
+        let mut archive = ArchiveWriter::create(&archive_path).unwrap();
+        archive.set_content_methods(vec![EncoderMethod::ZSTD.into()]);
+        archive
+            .push_archive_entry(
+                ArchiveEntry::new_file("folder/game.rom"),
+                Some(Cursor::new(b"abc")),
+            )
+            .unwrap();
+        archive.finish().unwrap();
+
+        let reader = ArchiveReader::open(&archive_path, Password::empty()).unwrap();
+        let mut methods = Vec::new();
+        reader
+            .file_compression_methods("folder/game.rom", &mut methods)
+            .unwrap();
+        assert_eq!(methods, vec![EncoderMethod::ZSTD]);
+
+        let report = scanner.scan(&collection, ScanMode::Full).unwrap();
+        assert_eq!(report.entries.len(), 1);
+        assert_eq!(report.entries[0].kind, EntryKind::SevenZEntry);
+        assert_eq!(report.entries[0].entry_path, "folder/game.rom");
         assert_eq!(
             report.entries[0].hashes.sha1,
             "a9993e364706816aba3e25717850c26c9cd0d89d"
