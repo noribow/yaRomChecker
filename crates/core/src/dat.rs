@@ -122,28 +122,20 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
         }
     }
 
-    let mut found_sha1 = HashSet::new();
-    let mut found_md5 = HashSet::new();
-    let mut found_crc = HashSet::new();
     let mut report = MatchReport::default();
+    // Hash (+ DAT size) hits only. Filename matching, if added later, must not reuse this set.
+    let mut hash_matched_roms = HashSet::new();
 
     for entry in entries {
         let sha1 = entry.hashes.sha1.to_ascii_lowercase();
         let md5 = entry.hashes.md5.to_ascii_lowercase();
         let crc = entry.hashes.crc32.to_ascii_lowercase();
-        let hit = rom_index
+        let hash_hit = rom_index
             .iter()
-            .find(|rom| rom_matches(rom, &sha1, &md5, &crc, entry.entry_size));
-        if let Some(rom) = hit {
-            if let Some(value) = &rom.sha1 {
-                found_sha1.insert(value.as_str());
-            }
-            if let Some(value) = &rom.md5 {
-                found_md5.insert(value.as_str());
-            }
-            if let Some(value) = &rom.crc32 {
-                found_crc.insert(value.as_str());
-            }
+            .enumerate()
+            .find(|(_, rom)| rom_hashes_match(rom, &sha1, &md5, &crc, entry.entry_size));
+        if let Some((index, rom)) = hash_hit {
+            hash_matched_roms.insert(index);
             report.matched.push(MatchedEntry {
                 entry_path: entry.entry_path.clone(),
                 status: MatchStatus::Matched,
@@ -160,20 +152,8 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
         }
     }
 
-    for rom in rom_index {
-        let present = rom
-            .sha1
-            .as_deref()
-            .is_some_and(|value| found_sha1.contains(value))
-            || rom
-                .md5
-                .as_deref()
-                .is_some_and(|value| found_md5.contains(value))
-            || rom
-                .crc32
-                .as_deref()
-                .is_some_and(|value| found_crc.contains(value));
-        if !present {
+    for (index, rom) in rom_index.iter().enumerate() {
+        if !hash_matched_roms.contains(&index) {
             report.missing.push(MissingRom {
                 game: rom.game.clone(),
                 name: rom.name.clone(),
@@ -184,22 +164,32 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
     report
 }
 
-fn rom_matches(rom: &DatRom, sha1: &str, md5: &str, crc: &str, size: u64) -> bool {
+fn rom_hashes_match(rom: &DatRom, sha1: &str, md5: &str, crc: &str, size: u64) -> bool {
     if let Some(expected) = rom.size
         && expected != size
     {
         return false;
     }
+    let mut compared = false;
     if let Some(expected) = &rom.sha1 {
-        return expected == sha1;
+        compared = true;
+        if expected != sha1 {
+            return false;
+        }
     }
     if let Some(expected) = &rom.md5 {
-        return expected == md5;
+        compared = true;
+        if expected != md5 {
+            return false;
+        }
     }
     if let Some(expected) = &rom.crc32 {
-        return expected == crc;
+        compared = true;
+        if expected != crc {
+            return false;
+        }
     }
-    false
+    compared
 }
 
 #[cfg(test)]
@@ -294,5 +284,44 @@ mod tests {
         assert!(report.matched.is_empty());
         assert_eq!(report.extra.len(), 1);
         assert_eq!(report.missing.len(), 1);
+    }
+
+    #[test]
+    fn every_hash_listed_in_the_dat_must_match() {
+        let rom = DatRom {
+            game: "Set".into(),
+            name: "a.rom".into(),
+            size: Some(3),
+            crc32: Some("352441c2".into()),
+            md5: Some("900150983cd24fb0d6963f7d28e17f72".into()),
+            sha1: Some("a9993e364706816aba3e25717850c26c9cd0d89d".into()),
+        };
+        let dat = DatFile {
+            path: PathBuf::from("x.dat"),
+            roms: vec![rom],
+        };
+        let only_sha1 = entry(
+            "a.rom",
+            "a9993e364706816aba3e25717850c26c9cd0d89d",
+            "ffffffffffffffffffffffffffffffff",
+            "00000000",
+            3,
+        );
+        let report = match_collection(&[only_sha1], std::slice::from_ref(&dat));
+        assert!(report.matched.is_empty());
+        assert_eq!(report.extra.len(), 1);
+        assert_eq!(report.missing.len(), 1);
+
+        let all_hashes = entry(
+            "a.rom",
+            "a9993e364706816aba3e25717850c26c9cd0d89d",
+            "900150983cd24fb0d6963f7d28e17f72",
+            "352441c2",
+            3,
+        );
+        let report = match_collection(&[all_hashes], &[dat]);
+        assert_eq!(report.matched.len(), 1);
+        assert!(report.extra.is_empty());
+        assert!(report.missing.is_empty());
     }
 }

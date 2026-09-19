@@ -61,10 +61,10 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - All four match: reuse stored hashes (for archives: four fields on the **container**; reuse inner hashes).
 - Any mismatch: re-hash that file like an initial scan.
 
-**DAT matching (staged)**
+**DAT matching**
 
-- No-Intro, Redump, TOSEC, MAME, custom DATs, in stages.
-- User supplies DAT files. Do not bundle copyrighted DAT dumps.
+- User-supplied Logiqx XML. Do not bundle copyrighted DAT dumps.
+- A collection file matches a DAT ROM only if **every hash listed on that ROM** agrees with the scan (CRC32, MD5, and SHA1, whichever the DAT provides). Size, if present in the DAT, must also agree. One matching algorithm is not enough when the DAT lists several.
 
 ## Organize (later, destructive)
 
