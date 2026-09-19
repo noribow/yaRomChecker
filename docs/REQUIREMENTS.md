@@ -87,7 +87,7 @@ In scope later: media health; copy **from** media into the working collection to
 
 | Role | Does |
 | --- | --- |
-| Codex | Implementation and tests in independent clone `C:\Users\shira\yaRomChecker-codex`, PR labeled `codex` |
+| Codex | Implementation and tests in independent clone `C:\Users\shira\yaRomChecker-codex`, PR labeled `codex`, body includes `Fixes #N` when an issue is completed |
 | Cursor | Review in `C:\Users\shira\yaRomChecker`, run tests, accept or request changes |
 | Humans / Cursor spec PRs | No `codex` label |
 

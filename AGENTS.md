@@ -18,10 +18,11 @@ Sync only through `origin` (`git fetch` / `git pull` / PR). Launch Codex with `-
 1. Read [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) before writing code.
 2. Work on a **feature branch**. Open a **pull request** into `main`. **Do not push directly to `main`.**
 3. Apply the GitHub label **`codex`** on every PR you open. Do not use that label for non-Codex work.
-4. Keep PRs small. One milestone per PR when practical.
-5. Include tests for new behavior. `cargo test` and `cargo clippy` must pass on Windows. Codex must reach crates.io (`CARGO_NET_OFFLINE` must be unset). YAML config uses `serde_yml`.
-6. Public docs, UI strings, CLI help, and commit/PR text are **English**. Do not hard-code Japanese in source.
-7. Do not redistribute DAT files or ROM files. Do not add downloaders.
+4. If the work closes a GitHub issue, the PR body **must** include `Fixes #N` (or `Closes #N`) so GitHub closes that issue when the PR merges. One primary issue per PR.
+5. Keep PRs small. One milestone per PR when practical.
+6. Include tests for new behavior. `cargo test` and `cargo clippy` must pass on Windows. Codex must reach crates.io (`CARGO_NET_OFFLINE` must be unset). YAML config uses `serde_yml`.
+7. Public docs, UI strings, CLI help, and commit/PR text are **English**. Do not hard-code Japanese in source.
+8. Do not redistribute DAT files or ROM files. Do not add downloaders.
 
 ## Layout (required)
 

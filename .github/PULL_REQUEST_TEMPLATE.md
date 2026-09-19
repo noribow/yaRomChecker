@@ -2,6 +2,8 @@
 
 <!-- What changed and why. English. -->
 
+Fixes #<!-- issue number -->
+
 ## Source
 
 - [ ] Produced with **Codex** — add the `codex` label (required for Codex PRs)
