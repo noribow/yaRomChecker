@@ -19,7 +19,7 @@ Sync only through `origin` (`git fetch` / `git pull` / PR). Launch Codex with `-
 2. Work on a **feature branch**. Open a **pull request** into `main`. **Do not push directly to `main`.**
 3. Apply the GitHub label **`codex`** on every PR you open. Do not use that label for non-Codex work.
 4. Keep PRs small. One milestone per PR when practical.
-5. Include tests for new behavior. `cargo test` and `cargo clippy` must pass on Windows. Codex must reach crates.io (`CARGO_NET_OFFLINE` must be unset). `serde_yaml` and other CLI crates are not optional.
+5. Include tests for new behavior. `cargo test` and `cargo clippy` must pass on Windows. Codex must reach crates.io (`CARGO_NET_OFFLINE` must be unset). YAML config uses `serde_yml`.
 6. Public docs, UI strings, CLI help, and commit/PR text are **English**. Do not hard-code Japanese in source.
 7. Do not redistribute DAT files or ROM files. Do not add downloaders.
 
@@ -62,6 +62,6 @@ Must include:
 
 - Parallel hashing: `rayon`
 - Logging: `tracing`
-- Config: `serde_yaml`
+- Config: `serde_yml`
 - DAT in v1 first slice: user-supplied Logiqx XML if you add matching; otherwise hash + store only is acceptable in the first PR
 - Organize, Redump/MAME/CHD, header stripping: later PRs
