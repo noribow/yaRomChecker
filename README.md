@@ -18,6 +18,13 @@ Early development. The first release targets Windows. Linux is planned for a lat
 - YAML configuration next to the executable (`yaRomChecker.yaml`); the CLI can pass `--config`
 - English UI by default, with locale resource files for other languages (including Japanese)
 
+## Documentation
+
+- [Requirements](docs/REQUIREMENTS.md) — product decisions
+- [AGENTS.md](AGENTS.md) — instructions for Codex (implementation) and reviewers
+
+Implementation is done by Codex on pull requests labeled **`codex`**. Direct pushes to `main` are not used for that work.
+
 ## License
 
 [MIT](LICENSE)
