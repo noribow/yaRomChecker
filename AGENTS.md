@@ -19,7 +19,7 @@ Sync only through `origin` (`git fetch` / `git pull` / PR). Launch Codex with `-
 2. Work on a **feature branch**. Open a **pull request** into `main`. **Do not push directly to `main`.**
 3. Apply the GitHub label **`codex`** on every PR you open. Do not use that label for non-Codex work.
 4. Keep PRs small. One milestone per PR when practical.
-5. Include tests for new behavior. `cargo test` and `cargo clippy` must pass on Windows.
+5. Include tests for new behavior. `cargo test` and `cargo clippy` must pass on Windows. Codex must reach crates.io (`CARGO_NET_OFFLINE` must be unset). `serde_yaml` and other CLI crates are not optional.
 6. Public docs, UI strings, CLI help, and commit/PR text are **English**. Do not hard-code Japanese in source.
 7. Do not redistribute DAT files or ROM files. Do not add downloaders.
 
