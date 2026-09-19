@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
-use yaromchecker_core::{ScanCache, ScanMode, Scanner};
+use yaromchecker_core::{DatFile, ScanCache, ScanMode, Scanner, match_collection};
 
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
 const JA_MESSAGES: &str = include_str!("../../../locales/ja.yaml");
@@ -27,6 +27,7 @@ enum Command {
     Scan { path: PathBuf },
     Quick { path: PathBuf },
     Full { path: PathBuf },
+    Verify { path: PathBuf },
 }
 
 #[derive(Deserialize)]
@@ -35,6 +36,8 @@ struct Config {
     #[serde(default = "default_locale")]
     locale: String,
     cache_path: PathBuf,
+    #[serde(default)]
+    dats: Vec<PathBuf>,
 }
 
 struct Messages {
@@ -183,6 +186,16 @@ fn parse_cli(messages: &Messages) -> Cli {
                     .text("full_help", "Rescan and hash every file")
                     .to_owned(),
             )
+        })
+        .mut_subcommand("verify", |command| {
+            command.about(
+                messages
+                    .text(
+                        "verify_help",
+                        "Scan a collection and match it against configured DAT files",
+                    )
+                    .to_owned(),
+            )
         });
     Cli::from_arg_matches(&command.get_matches()).expect("clap validated the arguments")
 }
@@ -208,17 +221,11 @@ fn run() -> Result<()> {
             )
         );
     }
-    let cache_path = if config.cache_path.is_absolute() {
-        config.cache_path
-    } else {
-        config_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(config.cache_path)
-    };
-    let (path, mode) = match cli.command {
-        Command::Scan { path } | Command::Full { path } => (path, ScanMode::Full),
-        Command::Quick { path } => (path, ScanMode::Quick),
+    let cache_path = resolve_path(&config_path, config.cache_path.clone());
+    let (path, mode, verify) = match cli.command {
+        Command::Scan { path } | Command::Full { path } => (path, ScanMode::Full, false),
+        Command::Quick { path } => (path, ScanMode::Quick, false),
+        Command::Verify { path } => (path, ScanMode::Quick, true),
     };
     let mut scanner = Scanner::new(ScanCache::open(&cache_path).with_context(|| {
         messages.format(
@@ -246,17 +253,104 @@ fn run() -> Result<()> {
             ],
         )
     );
-    for entry in report.entries {
+    for entry in &report.entries {
         println!(
             "{}",
             messages.format(
                 "scan_entry",
                 "{sha1}  {size}  {path}",
                 &[
-                    ("sha1", entry.hashes.sha1),
+                    ("sha1", entry.hashes.sha1.clone()),
                     ("size", entry.entry_size.to_string()),
-                    ("path", entry.entry_path),
+                    ("path", entry.entry_path.clone()),
                 ],
+            )
+        );
+    }
+    if verify {
+        print_dat_report(&config, &config_path, &report.entries, &messages)?;
+    }
+    Ok(())
+}
+
+fn resolve_path(base: &Path, path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        base.parent().unwrap_or_else(|| Path::new(".")).join(path)
+    }
+}
+
+fn print_dat_report(
+    config: &Config,
+    config_path: &Path,
+    entries: &[yaromchecker_core::ScanEntry],
+    messages: &Messages,
+) -> Result<()> {
+    if config.dats.is_empty() {
+        anyhow::bail!(
+            "{}",
+            messages.text(
+                "dat_missing_config",
+                "No DAT files configured. Add paths under dats: in the YAML config."
+            )
+        );
+    }
+    let mut dats = Vec::new();
+    for dat in &config.dats {
+        let path = resolve_path(config_path, dat.clone());
+        dats.push(DatFile::load(&path).with_context(|| {
+            messages.format(
+                "dat_read_error",
+                "Cannot read DAT {path}",
+                &[("path", path.display().to_string())],
+            )
+        })?);
+    }
+    let matched = match_collection(entries, &dats);
+    println!(
+        "{}",
+        messages.format(
+            "dat_summary",
+            "DAT match: {matched} matched, {extra} extra, {missing} missing.",
+            &[
+                ("matched", matched.matched.len().to_string()),
+                ("extra", matched.extra.len().to_string()),
+                ("missing", matched.missing.len().to_string()),
+            ],
+        )
+    );
+    for entry in &matched.matched {
+        println!(
+            "{}",
+            messages.format(
+                "dat_matched_line",
+                "matched  {path}  {game}/{name}",
+                &[
+                    ("path", entry.entry_path.clone()),
+                    ("game", entry.game.clone().unwrap_or_default()),
+                    ("name", entry.dat_name.clone().unwrap_or_default()),
+                ],
+            )
+        );
+    }
+    for entry in &matched.extra {
+        println!(
+            "{}",
+            messages.format(
+                "dat_extra_line",
+                "extra    {path}",
+                &[("path", entry.entry_path.clone())],
+            )
+        );
+    }
+    for rom in &matched.missing {
+        println!(
+            "{}",
+            messages.format(
+                "dat_missing_line",
+                "missing  {game}/{name}",
+                &[("game", rom.game.clone()), ("name", rom.name.clone()),],
             )
         );
     }

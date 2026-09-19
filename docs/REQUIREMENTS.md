@@ -29,6 +29,7 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - Default file: `yaRomChecker.yaml` in the **same directory as the executable** (not the current working directory).
 - CLI may pass `--config <path>`.
 - If the config file **does not exist**, create it at that path with the default contents (`locale: en` and a default `cache_path`) and then load it. Do not overwrite an existing file.
+- Optional `dats:` list of Logiqx XML DAT paths (relative to the YAML file, or absolute). Used by `yarc verify`. Do not bundle copyrighted DAT dumps.
 - Scan caches (hashes, sizes, mtimes) may use SQLite or another derived store. Paths for cache/logs belong in YAML.
 
 ## i18n
@@ -60,10 +61,10 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - All four match: reuse stored hashes (for archives: four fields on the **container**; reuse inner hashes).
 - Any mismatch: re-hash that file like an initial scan.
 
-**DAT matching (staged)**
+**DAT matching**
 
-- No-Intro, Redump, TOSEC, MAME, custom DATs, in stages.
-- User supplies DAT files. Do not bundle copyrighted DAT dumps.
+- User-supplied Logiqx XML. Do not bundle copyrighted DAT dumps.
+- A collection file matches a DAT ROM only if **every hash listed on that ROM** agrees with the scan (CRC32, MD5, and SHA1, whichever the DAT provides). Size, if present in the DAT, must also agree. One matching algorithm is not enough when the DAT lists several.
 
 ## Organize (later, destructive)
 
