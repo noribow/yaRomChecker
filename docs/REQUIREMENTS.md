@@ -87,8 +87,8 @@ In scope later: media health; copy **from** media into the working collection to
 
 | Role | Does |
 | --- | --- |
-| Codex | Implementation and tests on a PR labeled `codex` |
-| Cursor | Review, run tests, accept or request changes |
+| Codex | Implementation and tests in worktree `C:\Users\shira\yaRomChecker-codex`, PR labeled `codex` |
+| Cursor | Review in `C:\Users\shira\yaRomChecker`, run tests, accept or request changes |
 | Humans / Cursor spec PRs | No `codex` label |
 
 ## Open items (do not block the first scaffold PR)

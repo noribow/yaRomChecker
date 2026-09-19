@@ -2,6 +2,19 @@
 
 This repository is **yaRomChecker**. Source implementation is done by **Codex**. Cursor reviews, tests, and accepts. Do not treat this file as optional.
 
+## Working copies (git worktrees)
+
+Do **not** edit the Cursor tree from Codex, and do not run Codex in the Cursor folder.
+
+| Role | Directory | Git branch (typical) |
+| --- | --- | --- |
+| Cursor (review, spec, accept) | `C:\Users\shira\yaRomChecker` | `main` |
+| Codex (implementation) | `C:\Users\shira\yaRomChecker-codex` | feature branches from this worktree |
+
+The Codex directory is a `git worktree` of the same repository (`codex/workspace` was created as the worktree’s starting branch). Create each implementation branch **inside** `yaRomChecker-codex`. Cursor stays on `main` (or review branches) in `yaRomChecker`.
+
+If `main` moved in Cursor, in the Codex worktree run `git fetch` and rebase/merge `origin/main` before starting work.
+
 ## Workflow
 
 1. Read [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) before writing code.
