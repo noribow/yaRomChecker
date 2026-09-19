@@ -87,11 +87,14 @@ In scope later: media health; copy **from** media into the working collection to
 
 ## Collaboration
 
+Flow is **issue → Codex PR → Cursor review/test report → human merge**. Details: [AGENTS.md](../AGENTS.md).
+
 | Role | Does |
 | --- | --- |
-| Codex | Implementation and tests in independent clone `C:\Users\shira\yaRomChecker-codex`, PR labeled `codex`, body includes `Fixes #N` when an issue is completed |
-| Cursor | Review in `C:\Users\shira\yaRomChecker`, run tests, accept or request changes |
-| Humans / Cursor spec PRs | No `codex` label |
+| Human | Prioritizes work; decides merge after the Cursor report |
+| Cursor | Opens/refines GitHub issues; does **not** implement product code; fetches the Codex PR; runs tests; reviews thoroughly; reports verdict in chat; comments on the PR for Codex |
+| Codex | Implements in `C:\Users\shira\yaRomChecker-codex`, tests, PR labeled `codex`, body includes `Fixes #N` |
+| Spec/docs PRs | Cursor or human; **no** `codex` label |
 
 ## Open items (do not block the first scaffold PR)
 

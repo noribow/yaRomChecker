@@ -1,0 +1,12 @@
+---
+description: Issue first; Codex implements; Cursor only reviews and reports
+alwaysApply: true
+---
+
+# Delivery flow
+
+Do **not** implement product code (crates, locales for features, YAML behavior) in this Cursor clone. Open or refine a GitHub issue, then Codex implements in `yaRomChecker-codex` and opens a `codex` PR with `Fixes #N`.
+
+When a Codex PR exists: fetch it, run `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings`, review against the issue and `docs/REQUIREMENTS.md`, comment on GitHub for Codex, and **present a review report in chat** (verdict, commands, acceptance criteria, findings). Do not push to the Codex branch. Do not merge unless the human asked.
+
+Full text: `AGENTS.md`. Spec/process doc edits in this clone are allowed.

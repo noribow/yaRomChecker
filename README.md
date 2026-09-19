@@ -50,9 +50,9 @@ yarc verify C:\path\to\collection
 ## Documentation
 
 - [Requirements](docs/REQUIREMENTS.md) — product decisions
-- [AGENTS.md](AGENTS.md) — instructions for Codex (implementation) and reviewers
+- [AGENTS.md](AGENTS.md) — issue → Codex PR → Cursor review/test report
 
-Implementation is done by Codex on pull requests labeled **`codex`**. Direct pushes to `main` are not used for that work.
+Implementation: GitHub issue first, then Codex (`codex` PRs). Cursor reviews and tests; it does not land product code. Direct pushes to `main` are not used for that work.
 
 ## License
 
