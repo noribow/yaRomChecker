@@ -29,6 +29,7 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - Default file: `yaRomChecker.yaml` in the **same directory as the executable** (not the current working directory).
 - CLI may pass `--config <path>`.
 - If the config file **does not exist**, create it at that path with the default contents (`locale: en` and a default `cache_path`) and then load it. Do not overwrite an existing file.
+- Optional `dats:` list of Logiqx XML DAT paths (relative to the YAML file, or absolute). Used by `yarc verify`. Do not bundle copyrighted DAT dumps.
 - Scan caches (hashes, sizes, mtimes) may use SQLite or another derived store. Paths for cache/logs belong in YAML.
 
 ## i18n

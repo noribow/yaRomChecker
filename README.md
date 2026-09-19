@@ -33,8 +33,10 @@ The default locale is English. Additional languages use resource files under `lo
 ```powershell
 yarc scan C:\path\to\collection
 yarc quick C:\path\to\collection
-yarc full C:\path\to\collection
+yarc verify C:\path\to\collection
 ```
+
+`verify` performs a quick scan, then matches hashes against Logiqx DAT files listed under `dats:` in the YAML config. Collection files not in the DAT are extra; DAT ROMs not on disk are missing.
 
 `scan` and `full` stream every loose file and every ZIP/7z entry through CRC32, MD5, and SHA1 hashers. `quick` reuses cached hashes when the container path, file name, size, and modification time all match.
 

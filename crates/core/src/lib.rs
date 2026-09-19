@@ -1,10 +1,12 @@
 //! Scanning, streaming hashing, archive support, and the persistent scan cache.
 
 mod cache;
+mod dat;
 mod hash;
 mod scan;
 
 pub use cache::ScanCache;
+pub use dat::{DatFile, MatchReport, MatchStatus, MatchedEntry, MissingRom, match_collection};
 pub use hash::{Hashes, hash_reader};
 pub use scan::{EntryKind, ScanEntry, ScanMode, ScanReport, Scanner};
 
@@ -26,6 +28,8 @@ pub enum Error {
     InvalidTimestamp(String),
     #[error("directory traversal failed: {0}")]
     Walk(#[from] walkdir::Error),
+    #[error("DAT XML error: {0}")]
+    Xml(#[from] quick_xml::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
