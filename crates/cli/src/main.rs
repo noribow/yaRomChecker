@@ -11,6 +11,7 @@ use yaromchecker_core::{ScanCache, ScanMode, Scanner};
 
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
 const JA_MESSAGES: &str = include_str!("../../../locales/ja.yaml");
+const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 
 #[derive(Parser)]
 #[command(name = "yarc", version)]
@@ -99,6 +100,32 @@ fn default_config_path(messages: &Messages) -> Result<PathBuf> {
         .join("yaRomChecker.yaml"))
 }
 
+fn ensure_config(path: &Path, messages: &Messages) -> Result<bool> {
+    if path.exists() {
+        return Ok(false);
+    }
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| {
+            messages.format(
+                "config_write_error",
+                "Cannot write configuration {path}",
+                &[("path", path.display().to_string())],
+            )
+        })?;
+    }
+    fs::write(path, DEFAULT_CONFIG).with_context(|| {
+        messages.format(
+            "config_write_error",
+            "Cannot write configuration {path}",
+            &[("path", path.display().to_string())],
+        )
+    })?;
+    Ok(true)
+}
+
 fn load_config(path: &Path, messages: &Messages) -> Result<Config> {
     let contents = fs::read_to_string(path).with_context(|| {
         messages.format(
@@ -168,8 +195,19 @@ fn run() -> Result<()> {
         .config
         .map(Ok)
         .unwrap_or_else(|| default_config_path(&english))?;
+    let created = ensure_config(&config_path, &english)?;
     let config = load_config(&config_path, &english)?;
     let messages = Messages::load(&config.locale)?;
+    if created {
+        println!(
+            "{}",
+            messages.format(
+                "config_created",
+                "Created configuration {path}",
+                &[("path", config_path.display().to_string())],
+            )
+        );
+    }
     let cache_path = if config.cache_path.is_absolute() {
         config.cache_path
     } else {
@@ -266,5 +304,23 @@ mod tests {
             ),
             "Scanned 3 entries (2 hashed, 1 reused containers)."
         );
+    }
+
+    #[test]
+    fn creates_missing_config_and_does_not_overwrite_existing() {
+        let messages = Messages::load("en").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("nested");
+        let path = nested.join("yaRomChecker.yaml");
+
+        assert!(ensure_config(&path, &messages).unwrap());
+        let created = fs::read_to_string(&path).unwrap();
+        assert!(created.contains("locale: en"));
+        assert!(created.contains("cache_path:"));
+
+        fs::write(&path, "locale: en\ncache_path: keep-me.sqlite3\n").unwrap();
+        assert!(!ensure_config(&path, &messages).unwrap());
+        let kept = fs::read_to_string(&path).unwrap();
+        assert!(kept.contains("keep-me.sqlite3"));
     }
 }
