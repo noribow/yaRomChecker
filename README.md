@@ -24,7 +24,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## Configuration
 
-Copy `yaRomChecker.example.yaml` to `yaRomChecker.yaml` beside the `yarc` executable. Unless `--config` is supplied, configuration is loaded from that location rather than the current working directory. Relative cache paths are resolved from the configuration file's directory.
+If `yaRomChecker.yaml` (or the path given to `--config`) does not exist, `yarc` creates it with default contents and then loads it. Existing files are never overwritten. Relative cache paths are resolved from the configuration file's directory.
 
 The default locale is English. Additional languages use resource files under `locales/`.
 
