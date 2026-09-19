@@ -51,7 +51,7 @@ fn default_config_path() -> Result<PathBuf> {
 fn load_config(path: &Path) -> Result<Config> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("cannot read configuration {}", path.display()))?;
-    serde_yaml::from_str(&contents)
+    serde_yml::from_str(&contents)
         .with_context(|| format!("invalid configuration {}", path.display()))
 }
 
