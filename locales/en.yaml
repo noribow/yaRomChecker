@@ -1,0 +1,6 @@
+scan_complete: "Scan complete"
+error: "Error"
+unsupported_locale: "Unsupported locale"
+config_read_error: "Cannot read configuration"
+config_invalid_error: "Invalid configuration"
+hashing: "Hashing file"

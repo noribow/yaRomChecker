@@ -1,0 +1,21 @@
+[package]
+name = "yaromchecker-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+crc32fast.workspace = true
+md-5.workspace = true
+rusqlite.workspace = true
+rayon.workspace = true
+sevenz-rust.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+walkdir.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

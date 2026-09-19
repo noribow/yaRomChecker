@@ -1,5 +1,37 @@
 # yaRomChecker
 
+yaRomChecker verifies locally owned ROM files. This first milestone provides the
+`yarc` command-line scanner and a reusable core library.
+
+## Build
+
+Rust stable is required.
+
+```powershell
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+## Configuration
+
+Copy `yaRomChecker.example.yaml` to `yaRomChecker.yaml` beside the `yarc`
+executable. Unless `--config` is supplied, configuration is loaded from that
+location rather than the current working directory. Relative cache paths are
+resolved from the configuration file's directory.
+
+## Scan
+
+```powershell
+yarc scan C:\path\to\collection
+yarc quick C:\path\to\collection
+yarc full C:\path\to\collection
+```
+
+`scan` and `full` stream every loose file and every ZIP/7z entry through CRC32,
+MD5, and SHA1 hashers. `quick` reuses cached hashes when the container path,
+file name, size, and modification time all match.
+
 A ROM verification and organization tool written in Rust.
 
 yaRomChecker scans local ROM collections, matches files against DAT databases, and helps you check completeness and tidy names. It is intended for dumps you already own. It does not download or distribute ROMs.

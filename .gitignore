@@ -8,3 +8,5 @@ Thumbs.db
 .vscode/
 .env
 .env.*
+*.sqlite3
+yaRomChecker.yaml
