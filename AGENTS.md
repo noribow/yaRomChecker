@@ -2,18 +2,16 @@
 
 This repository is **yaRomChecker**. Source implementation is done by **Codex**. Cursor reviews, tests, and accepts. Do not treat this file as optional.
 
-## Working copies (git worktrees)
+## Working copies (separate clones)
 
-Do **not** edit the Cursor tree from Codex, and do not run Codex in the Cursor folder.
+Do **not** edit the Cursor tree from Codex, and do not run Codex in the Cursor folder. **Do not use git worktrees** for this split. Worktrees share one `.git`, so Codex cannot create branches when its sandbox cannot write into the Cursor repo.
 
-| Role | Directory | Git branch (typical) |
+| Role | Directory | Git |
 | --- | --- | --- |
-| Cursor (review, spec, accept) | `C:\Users\shira\yaRomChecker` | `main` |
-| Codex (implementation) | `C:\Users\shira\yaRomChecker-codex` | feature branches from this worktree |
+| Cursor (review, spec, accept) | `C:\Users\shira\yaRomChecker` | independent clone, usually `main` |
+| Codex (implementation) | `C:\Users\shira\yaRomChecker-codex` | independent clone; own `.git`; feature branches here |
 
-The Codex directory is a `git worktree` of the same repository (`codex/workspace` was created as the worktree’s starting branch). Create each implementation branch **inside** `yaRomChecker-codex`. Cursor stays on `main` (or review branches) in `yaRomChecker`.
-
-If `main` moved in Cursor, in the Codex worktree run `git fetch` and rebase/merge `origin/main` before starting work.
+Sync only through `origin` (`git fetch` / `git pull` / PR). Launch Codex with `-C C:\Users\shira\yaRomChecker-codex` and do **not** pass `--worktree` or `--add-dir` pointing at the Cursor clone.
 
 ## Workflow
 
