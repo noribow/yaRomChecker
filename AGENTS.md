@@ -13,16 +13,54 @@ Do **not** edit the Cursor tree from Codex, and do not run Codex in the Cursor f
 
 Sync only through `origin` (`git fetch` / `git pull` / PR). Launch Codex with `-C C:\Users\shira\yaRomChecker-codex` and do **not** pass `--worktree` or `--add-dir` pointing at the Cursor clone.
 
-## Workflow
+## Delivery flow (required)
 
-1. Read [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) before writing code.
-2. Work on a **feature branch**. Open a **pull request** into `main`. **Do not push directly to `main`.**
-3. Apply the GitHub label **`codex`** on every PR you open. Do not use that label for non-Codex work.
-4. If the work closes a GitHub issue, the PR body **must** include `Fixes #N` (or `Closes #N`) so GitHub closes that issue when the PR merges. One primary issue per PR.
-5. Keep PRs small. One milestone per PR when practical.
-6. Include tests for new behavior. `cargo test` and `cargo clippy` must pass on Windows. Codex must reach crates.io (`CARGO_NET_OFFLINE` must be unset). YAML config uses `serde_yml`.
-7. Public docs, UI strings, CLI help, and commit/PR text are **English**. Do not hard-code Japanese in source.
-8. Do not redistribute DAT files or ROM files. Do not add downloaders.
+Product code is **not** written in the Cursor clone. Cursor may draft issues, review PRs, run tests, and change **process/spec docs** only (this file, `docs/REQUIREMENTS.md`, GitHub templates). Implementation, tests in crates, and Codex-labeled PRs come from Codex.
+
+```text
+Issue (Cursor/human) → Codex implements + PR → Cursor tests + reviews → report to human → human decides merge
+```
+
+### 1. Issue first
+
+- Open a GitHub issue **before** implementation. Use `.github/ISSUE_TEMPLATE/codex-task.md`.
+- One primary issue per change. Acceptance criteria must be testable.
+- Point at [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md). Do not start coding from chat alone.
+- Cursor must **not** implement the issue in `C:\Users\shira\yaRomChecker` (no feature commits, no “quick fix” in core/cli/gui).
+
+### 2. Codex implements and opens a PR
+
+- Read [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) before writing code.
+- Work only in `C:\Users\shira\yaRomChecker-codex`. Feature branch. **Do not push to `main`.**
+- Open a pull request into `main`. Label **`codex`**. Body **must** include `Fixes #N` (one primary issue).
+- Keep PRs small. Include tests for new behavior.
+- `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` must pass on Windows. Reach crates.io (`CARGO_NET_OFFLINE` unset). YAML config uses `serde_yml`.
+- Public docs, UI strings, CLI help, and commit/PR text are **English**. Do not hard-code Japanese in source.
+- Do not redistribute DAT files or ROM files. Do not add downloaders.
+
+### 3. Cursor reviews and tests (no implement)
+
+After the PR exists, Cursor in `C:\Users\shira\yaRomChecker`:
+
+1. `git fetch origin` and check out the PR branch **read-only for product code** (do not add implementation commits).
+2. Run at least: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`. Add targeted tests only if the issue’s acceptance criteria are untested **and** then file a follow-up issue for Codex instead of patching the PR yourself.
+3. Review against the issue, REQUIREMENTS, and this file. Probe edge cases, regressions, and policy (no ROM/DAT redistribution).
+4. Post findings on the GitHub PR when they must reach Codex. **Do not push to the Codex branch.**
+5. **Present a review report to the human in chat** (required). Do not merge unless the human asked.
+
+Review report (use these headings):
+
+- **Verdict:** accept / request changes / blocked
+- **Issue / PR:** links
+- **Commands:** exact commands and pass/fail
+- **Acceptance criteria:** each issue criterion, met or not
+- **Findings:** blocking vs non-blocking
+- **Follow-up:** new issues only if needed; Codex iterates on the same PR when changes are requested
+
+### 4. Merge
+
+- Human (or Cursor **only when the human asked to merge**) merges after an accept verdict.
+- Spec-only PRs from Cursor: no `codex` label. Still use an issue when the change is more than a typo.
 
 ## Layout (required)
 
