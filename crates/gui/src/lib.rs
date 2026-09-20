@@ -18,6 +18,24 @@ pub fn set_count_text(verified: bool, count: usize) -> String {
     }
 }
 
+/// Joins the DAT's authoritative member-name list to optional scan hits.
+/// The returned index points into `hits`, while a missing index represents an
+/// unscanned or unmatched DAT member whose detail cells must remain blank.
+pub fn dat_member_rows(
+    dat_names: &[String],
+    hits: &[(String, String)],
+) -> Vec<(String, Option<usize>)> {
+    dat_names
+        .iter()
+        .map(|name| {
+            let hit = hits
+                .iter()
+                .position(|(dat_name, _entry_path)| dat_name == name);
+            (name.clone(), hit)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,5 +57,19 @@ mod tests {
         assert_eq!(set_count_text(false, 4), "");
         assert_eq!(set_count_text(true, 0), "0");
         assert_eq!(set_count_text(true, 4), "4");
+    }
+
+    #[test]
+    fn member_rows_include_dat_names_without_scan_hits() {
+        let names = vec!["track-1.bin".to_owned(), "track-2.bin".to_owned()];
+        let hits = vec![("track-1.bin".to_owned(), "disc.zip/track-1.bin".to_owned())];
+
+        assert_eq!(
+            dat_member_rows(&names, &hits),
+            vec![
+                ("track-1.bin".to_owned(), Some(0)),
+                ("track-2.bin".to_owned(), None)
+            ]
+        );
     }
 }
