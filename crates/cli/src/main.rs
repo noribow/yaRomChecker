@@ -339,6 +339,11 @@ fn print_dat_report(
         .iter()
         .filter(|rom| rom.status == DatRomStatus::Missing)
         .count();
+    let missing_in_archive = report
+        .roms
+        .iter()
+        .filter(|rom| rom.status == DatRomStatus::MissingInArchive)
+        .count();
     let nodump = report
         .roms
         .iter()
@@ -348,11 +353,12 @@ fn print_dat_report(
         "{}",
         messages.format(
             "dat_summary",
-            "DAT verification: {files} files, {present} present, {missing} missing, {nodump} nodump.",
+            "DAT verification: {files} files, {present} present, {missing} missing, {missing_in_archive} missing in archive, {nodump} nodump.",
             &[
                 ("files", report.files.len().to_string()),
                 ("present", present.to_string()),
                 ("missing", missing.to_string()),
+                ("missing_in_archive", missing_in_archive.to_string()),
                 ("nodump", nodump.to_string()),
             ],
         )
@@ -395,6 +401,20 @@ fn print_dat_report(
                 "dat_missing_line",
                 "missing  {game}/{name}",
                 &[("game", rom.game.clone()), ("name", rom.name.clone()),],
+            )
+        );
+    }
+    for rom in report
+        .roms
+        .iter()
+        .filter(|rom| rom.status == DatRomStatus::MissingInArchive)
+    {
+        println!(
+            "{}",
+            messages.format(
+                "dat_missing_in_archive_line",
+                "missing in archive  {game}/{name}",
+                &[("game", rom.game.clone()), ("name", rom.name.clone())],
             )
         );
     }

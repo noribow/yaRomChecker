@@ -71,7 +71,8 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - ROM names use an exact, case-sensitive comparison against `ScanEntry.entry_name`; no case folding or fuzzy matching is performed.
 - Hash identity takes precedence over name identity. After a file hash-matches a DAT ROM, its name is compared only with that ROM's name.
 - File statuses are `Have` (hash and name match), `WrongName` (hash matches but the name does not, including case-only differences), `WrongDump` (name matches but hashes or size do not), `Duplicate` (a later hash hit for a DAT ROM already filled by the first hit in scan order), and `Extra` (neither identity matches).
-- Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it and `Missing` otherwise. `WrongDump` does not fill a DAT ROM.
+- Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it. `WrongDump` does not fill a DAT ROM.
+- An unfilled ROM is `MissingInArchive` when another ROM with the same exact DAT `game` title is `Present` because it was filled from a ZIP or 7z inner entry. The filling entry's `container_path` is the archive evidence; archive file names are never used to infer games. An unfilled ROM is `Missing` otherwise, including when its sibling was filled by a loose file or when the entire archive is absent.
 - A ROM marked `nodump` is not missing and cannot be filled. A ROM marked `baddump` still matches normally by all listed hashes and optional size, and reports visibly identify it as a bad dump.
 
 **Dump definitions with a different data model**
