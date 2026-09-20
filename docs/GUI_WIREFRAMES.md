@@ -21,20 +21,20 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 
 ```text
 +------------------------------------------------------------------------------------------------+
-| File   Scan   Settings   Report   Organize (disabled)                                          |
+| File   Scan   Verify   Settings   Report   Organize (disabled)                                 |
 +----------------------------------+-------------------------------------------------------------+
 | Sources (DAT + collection)       | Sets                                                        |
-| v No-Intro Example  C:\ROMs\NES  | (columns TBD / later)                                       |
-|     [header / groups as tree]    | Example Game                                                |
-| v TOSEC Example                  | Example Game 2                                              |
+| v No-Intro Example  C:\ROMs\NES  | Name              Status      Present Missing …             |
+|     [header / groups as tree]    | Example Game      Complete          2       0               |
+| v TOSEC Example                  | Example Game 2    Incomplete        1       1               |
 |     ...                          |                                                             |
 | (empty: dat_missing_config)      | Select a DAT in the tree to list its sets.                  |
 +----------------------------------+-------------------------------------------------------------+
 | External media (later)           | Inner files                                                 |
-| Placeholder. Health check and    | (columns TBD / later)                                       |
+| Placeholder. Health check and    | Name     Size  mtime  CRC32 MD5 SHA1 Checked                 |
 | copy-from-media: later.          | rom.bin                                                     |
 | No write to CD/DVD/BD, USB, or   | disk.bin                                                    |
-| LTFS LTO.                        | Select an archive set to list inner files.                  |
+| LTFS LTO.                        | Select a multi-file or archive set to list members.         |
 +----------------------------------+-------------------------------------------------------------+
 | Collection: C:\ROMs\NES | Last scan: entries 2,013 / hashed 31 / reused 1,209 | Locale: en    |
 | Config: C:\...\yaRomChecker.yaml (read-only)                                                   |
@@ -45,6 +45,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 
 - **File**: later file-oriented actions as needed; do not add a ROM/DAT downloader.
 - **Scan**: opens the scan popup (mode + Start). Progress stays in that popup over the four panes.
+- **Verify**: runs DAT matching for sources the user chooses (at least the selected source, or all configured sources). It does not run because a DAT or set was selected.
 - **Settings**: opens the Settings screen.
 - **Report**: opens the Report screen.
 - **Organize**: visible and **disabled**; later feature (rename / quarantine / delete are out of scope here).
@@ -54,7 +55,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 
 - Tree of recognized / configured sources from YAML `sources` (same as Settings): each node is a DAT plus its collection directory. This is not a collection-folder tree.
 - Nodes may group header name (and later subgroups if a DAT supplies them); exact grouping below the DAT is not required for this wireframe slice.
-- Selecting a DAT fills the top-right set list.
+- Selecting a DAT fills the top-right set list from that DAT (names). It does **not** start a scan or a match.
 - Empty state: localized CLI `dat_missing_config` in this pane, with a way to open Settings. No DAT downloaders or bundled DAT files.
 
 ### Bottom-left: external media (later placeholder)
@@ -67,17 +68,19 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 
 - Shown when a DAT is selected in the top-left tree.
 - Lists that DAT's **sets** (per-game set rows from DAT matching rules in REQUIREMENTS).
-- **Columns: TBD / later.** Do not freeze Have/Missing/Complete column sets in this wireframe.
+- Columns:
+  - **Name** — DAT game display title.
+  - **Status** — `Complete`, `Incomplete`, or `MissingSet` after a user-run Verify. Before Verify, status and counts are empty or a not-verified placeholder; do not invent a match.
+  - **Counts for each status** on that set: at least Present, Missing, MissingInArchive, and nodump (ROM-side). Extra is not a set-row count.
 - Empty state: `Select a DAT in the tree to list its sets.`
-- With a DAT selected but no set rows yet (for example before any match data exists): keep the pane, with an empty table or a short empty message; do not navigate to another screen.
+- With a DAT selected but Verify not yet run: keep the pane with set names if they can be listed from the DAT alone, or an empty table plus `Run Verify to see statuses.` Do not navigate to another screen.
 
-### Bottom-right: inner files
+### Bottom-right: set members
 
-- Shown when the **selected set** is an **archive** (ZIP or 7z container).
-- Lists inner files of that archive.
-- **Columns: TBD / later.**
-- If the selected set is not an archive, or nothing is selected: `Select an archive set to list inner files.`
-- Do not extract archives to disk (scan/hash rules in REQUIREMENTS still apply).
+- Shown when the selected top-right set is **not a single loose file** (ZIP/7z archive, or a multi-file set such as cue plus tracks).
+- Hidden or showing `Select a multi-file or archive set to list members.` when nothing is selected or the set is one loose file.
+- Columns: **name**, **size**, **mtime**, **hashes** (CRC32, MD5, SHA1), **checked** (last time this entry was hashed into the shared cache). Persist that timestamp on scan if the cache does not already have it.
+- Do not extract archives to disk.
 
 ### Status bar (unchanged role)
 
@@ -92,7 +95,7 @@ Scan does **not** replace the four panes. The explorer stays visible behind a mo
 
 ```text
 +------------------------------------------------------------------------------------------------+
-| File   Scan   Settings   Report   Organize (disabled)                                          |
+| File   Scan   Verify   Settings   Report   Organize (disabled)                                 |
 +----------------------------------+-------------------------------------------------------------+
 | Configured DATs                  | Sets                                                        |
 | ... (dimmed, still laid out)     | ...                                                         |

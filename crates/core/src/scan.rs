@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     path::{Path, PathBuf},
-    time::UNIX_EPOCH,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use rayon::prelude::*;
@@ -53,6 +53,9 @@ pub struct ScanEntry {
     pub entry_size: u64,
     pub kind: EntryKind,
     pub hashes: Hashes,
+    /// Unix timestamp in nanoseconds for the most recent actual hash operation.
+    /// Cache reuse preserves this value.
+    pub last_hashed_ns: i64,
     pub reused: bool,
 }
 
@@ -73,6 +76,19 @@ impl Scanner {
     }
 
     pub fn scan(&mut self, root: &Path, mode: ScanMode) -> Result<ScanReport> {
+        self.scan_with_progress(root, mode, |_| {})
+    }
+
+    /// Scans a collection and reports each container before it is checked or hashed.
+    pub fn scan_with_progress<F>(
+        &mut self,
+        root: &Path,
+        mode: ScanMode,
+        mut on_container: F,
+    ) -> Result<ScanReport>
+    where
+        F: FnMut(&Path),
+    {
         if !root.is_dir() {
             return Err(crate::Error::NotDirectory(root.display().to_string()));
         }
@@ -90,6 +106,7 @@ impl Scanner {
         let mut report = ScanReport::default();
         let mut pending = Vec::new();
         for path in files {
+            on_container(&path);
             let identity = FileIdentity::read(&path)?;
             if mode == ScanMode::Quick {
                 let cached = self.cache.matching(
@@ -152,25 +169,27 @@ impl FileIdentity {
 }
 
 fn scan_file(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
+    let last_hashed_ns = unix_time_ns(SystemTime::now());
     match path
         .extension()
         .and_then(|value| value.to_str())
         .map(str::to_ascii_lowercase)
         .as_deref()
     {
-        Some("zip") => scan_zip(path, identity),
-        Some("7z") => scan_7z(path, identity),
+        Some("zip") => scan_zip(path, identity, last_hashed_ns),
+        Some("7z") => scan_7z(path, identity, last_hashed_ns),
         _ => Ok(vec![make_entry(
             identity,
             &identity.name,
             identity.size,
             EntryKind::File,
             hash_reader(File::open(path)?)?,
+            last_hashed_ns,
         )]),
     }
 }
 
-fn scan_zip(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
+fn scan_zip(path: &Path, identity: &FileIdentity, last_hashed_ns: i64) -> Result<Vec<ScanEntry>> {
     let mut archive = zip::ZipArchive::new(File::open(path)?)?;
     let mut entries = Vec::new();
     for index in 0..archive.len() {
@@ -187,12 +206,13 @@ fn scan_zip(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
             size,
             EntryKind::ZipEntry,
             hashes,
+            last_hashed_ns,
         ));
     }
     Ok(entries)
 }
 
-fn scan_7z(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
+fn scan_7z(path: &Path, identity: &FileIdentity, last_hashed_ns: i64) -> Result<Vec<ScanEntry>> {
     let mut archive = ArchiveReader::open(path, Password::empty())?;
     let mut entries = Vec::new();
     archive.for_each_entries(|entry, reader| {
@@ -204,6 +224,7 @@ fn scan_7z(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
                 entry.size,
                 EntryKind::SevenZEntry,
                 hashes,
+                last_hashed_ns,
             ));
         }
         Ok(true)
@@ -217,6 +238,7 @@ fn make_entry(
     size: u64,
     kind: EntryKind,
     hashes: Hashes,
+    last_hashed_ns: i64,
 ) -> ScanEntry {
     ScanEntry {
         container_path: identity.path.clone(),
@@ -232,8 +254,15 @@ fn make_entry(
         entry_size: size,
         kind,
         hashes,
+        last_hashed_ns,
         reused: false,
     }
+}
+
+fn unix_time_ns(time: SystemTime) -> i64 {
+    time.duration_since(UNIX_EPOCH)
+        .map(|duration| i64::try_from(duration.as_nanos()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -276,11 +305,14 @@ mod tests {
         let first = scanner.scan(&collection, ScanMode::Full).unwrap();
         assert_eq!(first.hashed_containers, 1);
         assert_eq!(first.entries[0].hashes.crc32, "352441c2");
+        assert!(first.entries[0].last_hashed_ns > 0);
+        let first_hashed_at = first.entries[0].last_hashed_ns;
 
         let quick = scanner.scan(&collection, ScanMode::Quick).unwrap();
         assert_eq!(quick.hashed_containers, 0);
         assert_eq!(quick.reused_containers, 1);
         assert!(quick.entries[0].reused);
+        assert_eq!(quick.entries[0].last_hashed_ns, first_hashed_at);
     }
 
     #[test]

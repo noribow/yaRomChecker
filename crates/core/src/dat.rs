@@ -530,6 +530,7 @@ mod tests {
                 md5: MD5.into(),
                 sha1: sha1.into(),
             },
+            last_hashed_ns: 0,
             reused: false,
         }
     }
