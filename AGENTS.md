@@ -38,15 +38,15 @@ Issue (Cursor/human) → Codex implements + PR → Cursor tests + reviews → re
 - Public docs, UI strings, CLI help, and commit/PR text are **English**. Do not hard-code Japanese in source.
 - Do not redistribute DAT files or ROM files. Do not add downloaders.
 
-### 3. Cursor reviews and tests (no implement)
+### 3. Cursor reviews and tests (automatic, no implement)
 
-After the PR exists, Cursor in `C:\Users\shira\yaRomChecker`:
+As soon as a Codex PR exists (label `codex`, or a PR this session just opened for Codex), Cursor in `C:\Users\shira\yaRomChecker` **must start a thorough test-and-review pass without waiting for the human to ask**. Do not stop at “PR opened.”
 
 1. `git fetch origin` and check out the PR branch **read-only for product code** (do not add implementation commits).
 2. Run at least: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`. Add targeted tests only if the issue’s acceptance criteria are untested **and** then file a follow-up issue for Codex instead of patching the PR yourself.
-3. Review against the issue, REQUIREMENTS, and this file. Probe edge cases, regressions, and policy (no ROM/DAT redistribution).
+3. Review against the issue, REQUIREMENTS, and this file. Probe edge cases, regressions, and policy (no ROM/DAT redistribution). Read the matching/parser code; do not rely on green tests alone.
 4. Post findings on the GitHub PR when they must reach Codex. **Do not push to the Codex branch.**
-5. **Present a review report to the human in chat** (required). Do not merge unless the human asked.
+5. **Present a review report to the human in chat in the same turn** (required). Do not merge unless the human asked.
 
 Review report (use these headings):
 

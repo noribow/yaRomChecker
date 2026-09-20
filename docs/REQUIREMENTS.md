@@ -96,7 +96,7 @@ Flow is **issue → Codex PR → Cursor review/test report → human merge**. De
 | Role | Does |
 | --- | --- |
 | Human | Prioritizes work; decides merge after the Cursor report |
-| Cursor | Opens/refines GitHub issues; does **not** implement product code; fetches the Codex PR; runs tests; reviews thoroughly; reports verdict in chat; comments on the PR for Codex |
+| Cursor | Opens/refines GitHub issues; does **not** implement product code; as soon as a Codex PR exists, fetches it, runs tests, reviews thoroughly, reports in chat, comments on the PR for Codex |
 | Codex | Implements in `C:\Users\shira\yaRomChecker-codex`, tests, PR labeled `codex`, body includes `Fixes #N` |
 | Spec/docs PRs | Cursor or human; **no** `codex` label |
 
