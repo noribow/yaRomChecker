@@ -71,7 +71,9 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - ROM names use an exact, case-sensitive comparison against `ScanEntry.entry_name`; no case folding or fuzzy matching is performed.
 - Hash identity takes precedence over name identity. After a file hash-matches a DAT ROM, its name is compared only with that ROM's name.
 - File statuses are `Have` (hash and name match), `WrongName` (hash matches but the name does not, including case-only differences), `WrongDump` (name matches but hashes or size do not), `Duplicate` (a later hash hit for a DAT ROM already filled by the first hit in scan order), and `Extra` (neither identity matches).
-- Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it and `Missing` otherwise. `WrongDump` does not fill a DAT ROM.
+- Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it. `WrongDump` does not fill a DAT ROM.
+- An unfilled DAT ROM is `MissingInArchive` when another ROM with the same exact DAT `game` title is `Present` because it was hash-filled by a ZIP or 7z inner entry. The filling entry's `container_path` identifies the scanned archive; archive file names are never used to infer DAT games. An unfilled ROM is `Missing` when there is no such archive-backed sibling, including when only a loose-file sibling is present or the entire archive is absent.
+- Unreadable archives remain scan errors and do not produce a DAT ROM status.
 - A ROM marked `nodump` is not missing and cannot be filled. A ROM marked `baddump` still matches normally by all listed hashes and optional size, and reports visibly identify it as a bad dump.
 
 **Dump definitions with a different data model**
@@ -108,6 +110,7 @@ In scope later: media health; copy **from** media into the working collection to
 ## GUI
 
 - Design: Markdown/chat wireframes first, then egui. No Figma.
+- The approved implementation reference is [GUI wireframes](GUI_WIREFRAMES.md), covering Main, Scan, DAT / Verify, Settings, and Report plus shared application chrome.
 - Explorer-like layout is enough (tree + table). Native Win32 look is not required.
 - Table: `egui_extras::TableBuilder`. Tree: `egui_ltreeview`.
 - Candidate screens: Main, Scan (initial/quick/full), DAT, Organize preview, Settings (writes YAML), Report, External media (later).
