@@ -54,7 +54,7 @@ DAT files are not bundled or downloaded by yaRomChecker, and this project does n
 ## Documentation
 
 - [Requirements](docs/REQUIREMENTS.md) — product decisions
-- [GUI wireframes](docs/GUI_WIREFRAMES.md) — planned Main, Scan, DAT / Verify, Settings, and Report screens
+- [GUI wireframes](docs/GUI_WIREFRAMES.md) — planned menu bar, four-pane DAT explorer, scan popup, Settings, and Report
 - [AGENTS.md](AGENTS.md) — issue → Codex PR → Cursor review/test report
 
 Implementation: GitHub issue first, then Codex (`codex` PRs). Cursor reviews and tests; it does not land product code. Direct pushes to `main` are not used for that work.
