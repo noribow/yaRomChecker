@@ -388,8 +388,8 @@ pub struct MatchReport {
     pub sets: Vec<SetMatch>,
 }
 
-pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport {
-    let rom_index: Vec<&DatRom> = dats.iter().flat_map(|dat| &dat.roms).collect();
+pub fn match_collection(entries: &[ScanEntry], dat: &DatFile) -> MatchReport {
+    let rom_index: Vec<&DatRom> = dat.roms.iter().collect();
     let mut filled_roms = HashSet::new();
     let mut archive_fills = HashSet::new();
     let mut files = Vec::with_capacity(entries.len());
@@ -561,7 +561,7 @@ mod tests {
     }
 
     fn statuses(entries: &[ScanEntry], dat: DatFile) -> (Vec<FileStatus>, Vec<DatRomStatus>) {
-        let report = match_collection(entries, &[dat]);
+        let report = match_collection(entries, &dat);
         (
             report.files.iter().map(|file| file.status).collect(),
             report.roms.iter().map(|rom| rom.status).collect(),
@@ -660,7 +660,7 @@ mod tests {
     fn baddump_matches_and_is_marked() {
         let mut collection = dat("game.rom");
         collection.roms[0].dump_status = DumpStatus::BadDump;
-        let report = match_collection(&[entry("game.rom", SHA1, 3)], &[collection]);
+        let report = match_collection(&[entry("game.rom", SHA1, 3)], &collection);
         assert_eq!(report.files[0].status, FileStatus::Have);
         assert_eq!(report.files[0].dump_status, Some(DumpStatus::BadDump));
     }
@@ -797,7 +797,7 @@ mod tests {
             sha1: Some("different".into()),
             ..collection.roms[0].clone()
         });
-        let report = match_collection(&[entry("name-target.rom", SHA1, 3)], &[collection]);
+        let report = match_collection(&[entry("name-target.rom", SHA1, 3)], &collection);
         assert_eq!(report.files[0].status, FileStatus::WrongName);
         assert_eq!(report.files[0].dat_name.as_deref(), Some("hash-target.rom"));
     }
@@ -809,7 +809,7 @@ mod tests {
                 entry("disc.cue", SHA1, 3),
                 entry("track01.bin", "1111111111111111111111111111111111111111", 3),
             ],
-            &[disc_game(false)],
+            &disc_game(false),
         );
         assert_eq!(
             report.sets,
@@ -828,14 +828,14 @@ mod tests {
                 "1111111111111111111111111111111111111111",
                 3,
             )],
-            &[disc_game(false)],
+            &disc_game(false),
         );
         assert_eq!(report.sets[0].status, SetStatus::Incomplete);
     }
 
     #[test]
     fn game_without_collection_files_is_a_missing_set() {
-        let report = match_collection(&[], &[disc_game(false)]);
+        let report = match_collection(&[], &disc_game(false));
         assert_eq!(report.sets[0].status, SetStatus::MissingSet);
     }
 
@@ -846,7 +846,7 @@ mod tests {
                 entry("disc.cue", SHA1, 3),
                 entry("track01.bin", "1111111111111111111111111111111111111111", 3),
             ],
-            &[disc_game(true)],
+            &disc_game(true),
         );
         assert_eq!(report.sets[0].status, SetStatus::Complete);
     }
@@ -855,7 +855,7 @@ mod tests {
     fn filled_baddump_rom_counts_toward_set_completion() {
         let mut collection = dat("game.rom");
         collection.roms[0].dump_status = DumpStatus::BadDump;
-        let report = match_collection(&[entry("game.rom", SHA1, 3)], &[collection]);
+        let report = match_collection(&[entry("game.rom", SHA1, 3)], &collection);
         assert_eq!(report.sets[0].status, SetStatus::Complete);
         assert_eq!(report.files[0].dump_status, Some(DumpStatus::BadDump));
     }
@@ -864,6 +864,40 @@ mod tests {
     fn nodump_only_game_is_omitted_from_set_scores() {
         let mut collection = dat("unknown.rom");
         collection.roms[0].dump_status = DumpStatus::NoDump;
-        assert!(match_collection(&[], &[collection]).sets.is_empty());
+        assert!(match_collection(&[], &collection).sets.is_empty());
+    }
+
+    #[test]
+    fn separate_dat_collection_pairs_do_not_share_files_or_extras() {
+        let a_entries = vec![entry("a.rom", SHA1, 3)];
+        let a_report = match_collection(&a_entries, &dat("a.rom"));
+        let b_report = match_collection(&[], &dat("b.rom"));
+
+        assert_eq!(a_report.files[0].status, FileStatus::Have);
+        assert_eq!(a_report.roms[0].status, DatRomStatus::Present);
+        assert!(b_report.files.is_empty());
+        assert_eq!(b_report.roms[0].status, DatRomStatus::Missing);
+    }
+
+    #[test]
+    fn identical_hashes_in_different_pairs_do_not_steal_first_hit() {
+        let a_report = match_collection(&[entry("a.rom", SHA1, 3)], &dat("a.rom"));
+        let b_report = match_collection(&[entry("b.rom", SHA1, 3)], &dat("b.rom"));
+
+        assert_eq!(a_report.files[0].status, FileStatus::Have);
+        assert_eq!(b_report.files[0].status, FileStatus::Have);
+        assert_eq!(b_report.roms[0].status, DatRomStatus::Present);
+    }
+
+    #[test]
+    fn two_dats_can_report_independently_for_one_collection() {
+        let entries = vec![entry("shared.rom", SHA1, 3)];
+        let matching = match_collection(&entries, &dat("shared.rom"));
+        let other = match_collection(&entries, &dat("other.rom"));
+
+        assert_eq!(matching.files[0].status, FileStatus::Have);
+        assert_eq!(matching.roms[0].status, DatRomStatus::Present);
+        assert_eq!(other.files[0].status, FileStatus::WrongName);
+        assert_eq!(other.roms[0].status, DatRomStatus::Present);
     }
 }

@@ -87,13 +87,12 @@ Main is the collection explorer, not a dashboard-only landing screen.
 
 ```text
 +-- DAT / Verify --------------------------------------------------------------------------------+
-| Collection root: [C:\ROMs____________________________________________________] [Browse...]     |
-| Configured DATs                                                               [Open Settings] |
-| Header name             Version       Path                                                    |
-| No-Intro Example        2026-09       C:\DATs\No-Intro.dat                                    |
-| TOSEC Example           2026-08       C:\DATs\TOSEC.dat                                       |
-| [Verify]  (quick scan, then match)                                                            |
-| Summary: files 1,240 | present 1,112 | missing 12 | nodump 3                                 |
+| Configured sources                                                            [Open Settings] |
+| Header name       Version    DAT path                       Collection                         |
+| No-Intro Example  2026-09    C:\DATs\No-Intro.dat          C:\ROMs\NES                       |
+| TOSEC Example     2026-08    C:\DATs\TOSEC.dat             C:\ROMs\TOSEC                     |
+| [Verify]  (quick-scan unique collections, then match each pair)                                  |
+| Selected source summary: files 1,240 | present 1,112 | missing 12 | nodump 3              |
 | DAT read errors: C:\DATs\broken.dat: line 12: invalid ROM record                              |
 |                                                                                                |
 | File results   Filters: [Have] [WrongName] [WrongDump] [Duplicate] [Extra]                    |
@@ -109,14 +108,13 @@ Main is the collection explorer, not a dashboard-only landing screen.
 +------------------------------------------------------------------------------------------------+
 ```
 
-- Collection-root field and Browse action.
-- Read-only DAT list showing header name, version, and configured path. Open Settings edits the list.
-- Verify performs a quick scan first and then matches against all readable configured DATs.
-- Summary shows collection files, DAT ROMs present, DAT ROMs missing, and DAT ROMs marked `nodump`.
+- Read-only ordered source list showing header name, version, DAT path, and paired collection directory. Open Settings edits the list.
+- Verify quick-scans each unique collection into the shared cache, then matches each readable DAT only against its paired collection. Two DATs paired with one collection have separate reports backed by the same scan rows.
+- Summary is per source and shows collection files, DAT ROMs present, DAT ROMs missing, and DAT ROMs marked `nodump`.
 - First table: collection-file status, path, game display title, exact DAT ROM name, and visible `baddump`; filters are Have, WrongName, WrongDump, Duplicate, and Extra.
 - Second, separate table: DAT-ROM state (Present, Missing, or `nodump`), game display title, exact name, and visible `baddump`.
 - Names compare exactly and case-sensitively; TOSEC-style names remain unchanged. Hash identity takes precedence, and all DAT-provided hashes and optional size must agree.
-- With no configured DATs, show the localized CLI `dat_missing_config` message in the empty DAT-list area, offer Open Settings, and disable Verify.
+- With no configured sources, show the localized CLI `dat_missing_config` message in the empty source-list area, offer Open Settings, and disable Verify.
 - DAT read errors show their DAT path and diagnostic; readable DATs may still produce results.
 - Before verification, both tables show `Run verification to see results.`
 - `nodump` is informational, is not Missing, and cannot be filled. `baddump` matches normally and stays visibly flagged.
@@ -129,10 +127,10 @@ Main is the collection explorer, not a dashboard-only landing screen.
 | Configuration file (read-only): C:\...\yaRomChecker.yaml                                      |
 | Locale: [en v]    choices: en, ja                                                            |
 | Cache path: [cache.sqlite____________________________________________________] [Browse...]     |
-| DAT files                                                                                     |
-| C:\DATs\No-Intro.dat                                                          [Remove]        |
-| C:\DATs\TOSEC.dat                                                             [Remove]        |
-| [Add...] [Browse...]                                                                            |
+| DAT and collection sources                                                                    |
+| DAT: [C:\DATs\No-Intro.dat____] [Browse] Collection: [C:\ROMs\NES____] [Browse] [Remove]   |
+| DAT: [C:\DATs\TOSEC.dat_______] [Browse] Collection: [C:\ROMs\TOSEC__] [Browse] [Remove]   |
+| [Add source]                                                                                  |
 | [Save]                                                                                        |
 +------------------------------------------------------------------------------------------------+
 ```
@@ -140,7 +138,7 @@ Main is the collection explorer, not a dashboard-only landing screen.
 - Read-only resolved configuration-file path.
 - Locale selector with `en` and `ja`; English is the default.
 - Editable `cache_path` with Browse.
-- Ordered `dats` list with Add, Remove, and Browse. Paths may be absolute or YAML-relative.
+- Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative.
 - Save writes settings to YAML only; scan records and hashes remain in the cache.
 - If YAML is missing, Save creates it with the currently displayed settings (including defaults). If it exists, loading preserves its values and Save updates that same file only in response to the explicit Save action; automatic create-if-missing behavior never overwrites existing YAML.
 - Missing DAT paths and invalid or unwritable settings appear inline; missing DATs are warnings so other valid settings can still be saved.
