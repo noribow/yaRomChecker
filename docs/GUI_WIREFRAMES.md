@@ -1,126 +1,134 @@
 # GUI wireframes
 
-These low-fidelity wireframes define the first `yaRomChecker` desktop GUI slice described by issue #12. They specify structure and visible behavior, not final styling. The GUI will be a separate `yaRomChecker` binary using the shared core library; this document does not implement that binary.
+These low-fidelity wireframes define the `yaRomChecker` desktop GUI. They specify structure and visible behavior, not final styling. The GUI will be a separate `yaRomChecker` binary using the shared core library; this document does not implement that binary.
 
-## Shared application chrome
+This revision (issue #19) replaces the issue #12 / PR #15 map: the primary window is a **menu bar plus four panes**. Scan is a **modal popup** over that window. There is no full-page Scan explorer and no separate full-page DAT / Verify screen.
+
+## Screen map
+
+| Surface | Role |
+| --- | --- |
+| Primary window | Menu bar + four panes (DAT tree, external media, sets, inner files) |
+| Scan popup | Modal over the primary window while a scan runs (and to choose scan mode / Start) |
+| Settings | Secondary screen from the menu (same purpose as #12; not a new landing page) |
+| Report | Secondary screen from the menu (same purpose as #12; not a new landing page) |
+| Organize | Disabled menu item only (later) |
+| External media | Bottom-left pane placeholder only (later; no write to media) |
+
+Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Verify full page).
+
+## Primary window
 
 ```text
 +------------------------------------------------------------------------------------------------+
-| yaRomChecker                                                                                   |
-+------------------------------------------------------------------------------------------------+
-| [Main] [Scan] [DAT / Verify] [Settings] [Report] [Organize - disabled]                         |
-|                                                     [External media - disabled]                |
-+------------------------------------------------------------------------------------------------+
-| Screen content                                                                                 |
-+------------------------------------------------------------------------------------------------+
-| Root: C:\ROMs | Last scan: entries 2,013 / hashed 31 / reused 1,209 | Locale: en              |
+| File   Scan   Settings   Report   Organize (disabled)                                          |
++----------------------------------+-------------------------------------------------------------+
+| Sources (DAT + collection)       | Sets                                                        |
+| v No-Intro Example  C:\ROMs\NES  | (columns TBD / later)                                       |
+|     [header / groups as tree]    | Example Game                                                |
+| v TOSEC Example                  | Example Game 2                                              |
+|     ...                          |                                                             |
+| (empty: dat_missing_config)      | Select a DAT in the tree to list its sets.                  |
++----------------------------------+-------------------------------------------------------------+
+| External media (later)           | Inner files                                                 |
+| Placeholder. Health check and    | (columns TBD / later)                                       |
+| copy-from-media: later.          | rom.bin                                                     |
+| No write to CD/DVD/BD, USB, or   | disk.bin                                                    |
+| LTFS LTO.                        | Select an archive set to list inner files.                  |
++----------------------------------+-------------------------------------------------------------+
+| Collection: C:\ROMs\NES | Last scan: entries 2,013 / hashed 31 / reused 1,209 | Locale: en    |
 | Config: C:\...\yaRomChecker.yaml (read-only)                                                   |
 +------------------------------------------------------------------------------------------------+
 ```
 
-- Primary navigation: Main, Scan, DAT / Verify, Settings, and Report; the current screen is selected.
-- Organize and External media are visible, disabled navigation placeholders marked as later features.
-- The status bar always shows the collection root (or `No collection selected`), last scan entry/hashed-container/reused-container counts (or `No scan yet`), and selected locale.
-- The resolved YAML configuration path is always visible, selectable, and read-only.
-- Current activity may also appear while work runs. Long values may be truncated if their complete value is available in a tooltip or selectable text.
-- No ROM or DAT downloader is offered.
+### Menu bar
 
-## Main
+- **File**: later file-oriented actions as needed; do not add a ROM/DAT downloader.
+- **Scan**: opens the scan popup (mode + Start). Progress stays in that popup over the four panes.
+- **Settings**: opens the Settings screen.
+- **Report**: opens the Report screen.
+- **Organize**: visible and **disabled**; later feature (rename / quarantine / delete are out of scope here).
+- No tab strip of Main / Scan / DAT / Verify. Those full pages are retired.
 
-Main is the collection explorer, not a dashboard-only landing screen.
+### Top-left: configured DATs (tree)
+
+- Tree of recognized / configured sources from YAML `sources` (same as Settings): each node is a DAT plus its collection directory. This is not a collection-folder tree.
+- Nodes may group header name (and later subgroups if a DAT supplies them); exact grouping below the DAT is not required for this wireframe slice.
+- Selecting a DAT fills the top-right set list.
+- Empty state: localized CLI `dat_missing_config` in this pane, with a way to open Settings. No DAT downloaders or bundled DAT files.
+
+### Bottom-left: external media (later placeholder)
+
+- Placeholder only. Later: health check and copy **from** media into the working collection.
+- Out of scope now: burning, tape write, LTFS format, or any write to external media.
+- Disabled / empty copy explaining later work is enough; do not design a working media browser in this revision.
+
+### Top-right: sets
+
+- Shown when a DAT is selected in the top-left tree.
+- Lists that DAT's **sets** (per-game set rows from DAT matching rules in REQUIREMENTS).
+- **Columns: TBD / later.** Do not freeze Have/Missing/Complete column sets in this wireframe.
+- Empty state: `Select a DAT in the tree to list its sets.`
+- With a DAT selected but no set rows yet (for example before any match data exists): keep the pane, with an empty table or a short empty message; do not navigate to another screen.
+
+### Bottom-right: inner files
+
+- Shown when the **selected set** is an **archive** (ZIP or 7z container).
+- Lists inner files of that archive.
+- **Columns: TBD / later.**
+- If the selected set is not an archive, or nothing is selected: `Select an archive set to list inner files.`
+- Do not extract archives to disk (scan/hash rules in REQUIREMENTS still apply).
+
+### Status bar (unchanged role)
+
+- Selected source collection (or `No source selected`), last scan entry / hashed-container / reused-container counts (or `No scan yet`), selected locale.
+- Resolved YAML configuration path: always visible, selectable, read-only.
+- Current activity may also appear while work runs. Long values may be truncated if the complete value is in a tooltip or selectable text.
+- No ROM or DAT downloader.
+
+## Scan popup (modal)
+
+Scan does **not** replace the four panes. The explorer stays visible behind a modal.
 
 ```text
-+-- Main ----------------------------------------------------------------------------------------+
-| Collection root: [C:\ROMs____________________________________________________] [Browse...]     |
-| [Scan] [Quick] [Full] [Verify]                                                                |
-+------------------------------+-----------------------------------------------------------------+
-| Folders and containers       | Files and archive entries                                      |
-| v C:\ROMs                    | Name     Path              Kind       Size CRC32 MD5 SHA1 Reuse DAT|
-|   > Console A                | game.bin C:\ROMs\game.bin loose file 2 MiB ...   ... ...  no    Have|
-|   v pack.zip                 | rom.bin  pack.zip/rom.bin  ZIP entry  1 MiB ...   ... ...  yes   Have|
-|     > inner                  | disk.bin set.7z/disk.bin   7z entry   4 MiB ...   ... ...  no         |
-|   > set.7z                   |                                                                 |
-+------------------------------+-----------------------------------------------------------------+
-| Selected row                                                                                   |
-| Container path: C:\ROMs\pack.zip | Container size: 4 MiB | Container mtime: 2026-09-20 12:00 |
-| CRC32: ... | MD5: ... | SHA1: ...                                                            |
++------------------------------------------------------------------------------------------------+
+| File   Scan   Settings   Report   Organize (disabled)                                          |
++----------------------------------+-------------------------------------------------------------+
+| Configured DATs                  | Sets                                                        |
+| ... (dimmed, still laid out)     | ...                                                         |
++----------------------------------+-------------------------------------------------------------+
+| External media (later)           | Inner files                                                 |
+| ...                              | ...                                                         |
++----------------------------------+-------------------------------------------------------------+
+|                    +---------------- Scan -----------------------+                             |
+|                    | Sources: unique collections from YAML       |                             |
+|                    | Mode: (o) Initial/full  ( ) Quick  ( ) Full |                             |
+|                    | [Start]                                     |                             |
+|                    | Progress: [##########----------]            |                             |
+|                    | Current container: C:\ROMs\pack.zip         |                             |
+|                    | Hashed: 31 | Reused: 1,209 | Entries: 2,013 |                             |
+|                    | Result: ... same wording as CLI summary     |                             |
+|                    | Errors:                                     |                             |
+|                    | C:\ROMs\broken.zip: unreadable archive      |                             |
+|                    +---------------------------------------------+                             |
 +------------------------------------------------------------------------------------------------+
 ```
 
-- Editable collection-root field and Browse action.
-- Explorer tree implemented with `egui_ltreeview`; it shows directories and ZIP/7z containers.
-- File table implemented with `egui_extras::TableBuilder`. Columns: name (`entry_name`), path (`entry_path`), kind (`loose file`, `ZIP entry`, or `7z entry`), size, CRC32, MD5, SHA1, cache reused (`yes`/`no`), and DAT file status.
-- DAT status after verification is `Have`, `WrongName`, `WrongDump`, `Duplicate`, `Extra`, or empty.
-- Selected-row details show container path, container size, container modification time, and the selected entry's CRC32, MD5, and SHA1. A loose file supplies its own container details.
-- Scan, Quick, Full, and Verify carry the root to the corresponding screen. Scan selects initial/full mode; Quick and Full select those rescan modes. Work starts only after Start or Verify there.
-- Empty state: `Choose a collection root to browse or scan.` Tree, table, and details remain empty.
-- Omitted, later: recent-activity dashboard, rename, quarantine, deletion, media health checks, and copying from external media.
-
-## Scan
-
-```text
-+-- Scan ----------------------------------------------------------------------------------------+
-| Collection root: [C:\ROMs____________________________________________________] [Browse...]     |
-| Mode: (o) Initial/full scan  ( ) Quick rescan  ( ) Full rescan                                |
-| [Start]                                                                                       |
-| Progress: [####################--------------------]                                           |
-| Current container: C:\ROMs\pack.zip                                                          |
-| Containers hashed: 31 | Containers reused: 1,209 | Entries: 2,013                            |
-| Result: 2,013 entries; 31 hashed; 1,209 reused; 0 errors                                     |
-| Errors                                                                                        |
-| C:\ROMs\broken.zip: unsupported or unreadable archive                                        |
-+------------------------------------------------------------------------------------------------+
-```
-
-- Collection-root field and Browse action.
+- Default Start hashes every unique `sources` collection into the shared cache (same as `yarc verify`'s scan step). An extra folder field with Browse is optional and writes into that same cache.
 - Three mutually exclusive modes: Initial/full scan, Quick rescan, and Full rescan.
   - Initial/full and Full re-hash every loose-file container and ZIP/7z container, streaming inner entries into the hashers.
   - Quick reuses hashes only when container path, file name, size, and modification time match; otherwise it re-hashes the container.
 - Start action. Cancel is not required and is omitted; a later implementation may add it as optional.
-- Progress shows current container path, hashed-container count, reused-container count, and entry count. Archives are never extracted to disk.
+- While scanning, progress (current container, hashed-container count, reused-container count, entry count) stays in this popup. Archives are never extracted to disk.
 - Completion uses the same count meanings and wording as the CLI scan summary.
 - An error list identifies affected paths and messages without discarding successful results.
-- Empty state: `Choose a collection root and scan mode.`
+- Empty state before Start: `Choose a scan mode. Start hashes configured source collections.`
+- Closing the popup after completion returns to the four-pane window; it does not open a Scan full page.
 - Omitted, later: RAR, standalone `.zst`, header stripping, archive extraction controls, and required cancellation.
 
-## DAT / Verify
+## Settings (from menu)
 
-```text
-+-- DAT / Verify --------------------------------------------------------------------------------+
-| Configured sources                                                            [Open Settings] |
-| Header name       Version    DAT path                       Collection                         |
-| No-Intro Example  2026-09    C:\DATs\No-Intro.dat          C:\ROMs\NES                       |
-| TOSEC Example     2026-08    C:\DATs\TOSEC.dat             C:\ROMs\TOSEC                     |
-| [Verify]  (quick-scan unique collections, then match each pair)                                  |
-| Selected source summary: files 1,240 | present 1,112 | missing 12 | nodump 3              |
-| DAT read errors: C:\DATs\broken.dat: line 12: invalid ROM record                              |
-|                                                                                                |
-| File results   Filters: [Have] [WrongName] [WrongDump] [Duplicate] [Extra]                    |
-| Status      Path                    Game              DAT ROM name       baddump               |
-| Have        C:\ROMs\game.bin        Example Game      game.bin                                   |
-| WrongName   C:\ROMs\GAME2.BIN       Example Game 2    game2.bin                                  |
-|                                                                                                |
-| DAT ROM results                                                                               |
-| State       Game                    Name               baddump                                  |
-| Present     Example Game             game.bin                                                   |
-| Missing     Example Game 3           game3.bin                                                  |
-| nodump      Example Game 4           undumped.bin                                               |
-+------------------------------------------------------------------------------------------------+
-```
-
-- Read-only ordered source list showing header name, version, DAT path, and paired collection directory. Open Settings edits the list.
-- Verify quick-scans each unique collection into the shared cache, then matches each readable DAT only against its paired collection. Two DATs paired with one collection have separate reports backed by the same scan rows.
-- Summary is per source and shows collection files, DAT ROMs present, DAT ROMs missing, and DAT ROMs marked `nodump`.
-- First table: collection-file status, path, game display title, exact DAT ROM name, and visible `baddump`; filters are Have, WrongName, WrongDump, Duplicate, and Extra.
-- Second, separate table: DAT-ROM state (Present, Missing, or `nodump`), game display title, exact name, and visible `baddump`.
-- Names compare exactly and case-sensitively; TOSEC-style names remain unchanged. Hash identity takes precedence, and all DAT-provided hashes and optional size must agree.
-- With no configured sources, show the localized CLI `dat_missing_config` message in the empty source-list area, offer Open Settings, and disable Verify.
-- DAT read errors show their DAT path and diagnostic; readable DATs may still produce results.
-- Before verification, both tables show `Run verification to see results.`
-- `nodump` is informational, is not Missing, and cannot be filled. `baddump` matches normally and stays visibly flagged.
-- Omitted, later: cancellation, DAT downloads/links, DAT editing, MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping.
-
-## Settings
+Unchanged in purpose from issue #12. Opened from the menu, not from a primary nav tab. The list is YAML `sources` (DAT + collection), not a bare `dats:` path list.
 
 ```text
 +-- Settings ------------------------------------------------------------------------------------+
@@ -138,19 +146,21 @@ Main is the collection explorer, not a dashboard-only landing screen.
 - Read-only resolved configuration-file path.
 - Locale selector with `en` and `ja`; English is the default.
 - Editable `cache_path` with Browse.
-- Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative.
+- Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative. This list is the source of the primary-window DAT tree.
 - Save writes settings to YAML only; scan records and hashes remain in the cache.
 - If YAML is missing, Save creates it with the currently displayed settings (including defaults). If it exists, loading preserves its values and Save updates that same file only in response to the explicit Save action; automatic create-if-missing behavior never overwrites existing YAML.
 - Missing DAT paths and invalid or unwritable settings appear inline; missing DATs are warnings so other valid settings can still be saved.
 - Omitted, later: editing config-file location, themes, automatic DAT downloads, and database-backed settings.
 
-## Report
+## Report (from menu)
+
+Unchanged in purpose from issue #12. Opened from the menu, not from a primary nav tab.
 
 ```text
 +-- Report --------------------------------------------------------------------------------------+
 | Last scan summary (read-only)                                                                 |
 | Entries: 2,013 | Containers hashed: 31 | Containers reused: 1,209 | Errors: 0                 |
-| Last DAT summary (read-only)                                                                  |
+| Last DAT summary (read-only)                                                                 |
 | Files: 1,240 | Present: 1,112 | Missing: 12 | nodump: 3                                      |
 | [Copy summaries]  [Export - later, disabled]                                                  |
 | Organize preview: later (disabled placeholder)                                                |
@@ -166,8 +176,18 @@ Main is the collection explorer, not a dashboard-only landing screen.
 
 ## Navigation and state notes
 
-- Main actions preselect an operation and navigate; they do not start it immediately.
+- The four-pane window is always the designed main screen. Scan work is modal over it.
+- Settings and Report are secondary; returning from them shows the same four panes.
 - Results remain available during the current session. Persistence beyond the scan cache is a later decision.
-- Running activity appears in shared status. Navigating away does not imply cancellation.
+- Navigating to Settings or Report does not imply scan cancellation (Cancel is not required).
 - Errors attach to affected items where practical; one unreadable item does not erase successful results.
 - Keyboard order follows visible layout. Disabled/later controls are skipped.
+- DAT matching rules (Have, WrongName, set Complete/Incomplete, and so on) stay in REQUIREMENTS; this wireframe does not invent table columns for them.
+
+## Retired from issue #12
+
+- Full-page **Main** collection-folder explorer (folder tree + file table as the home screen).
+- Full-page **Scan** as primary navigation.
+- Full-page **DAT / Verify** with two result tables as a separate screen.
+
+Those behaviors are either folded into the four panes, the scan popup, Settings, or Report, or left as TBD columns / later work.

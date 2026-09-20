@@ -115,39 +115,28 @@ In scope later: media health; copy **from** media into the working collection to
 ## GUI
 
 - Design: Markdown/chat wireframes first, then egui. No Figma.
-- See [GUI wireframes](GUI_WIREFRAMES.md) for Main, Scan, DAT / Verify, Settings, Report, and shared application chrome.
+- See [GUI wireframes](GUI_WIREFRAMES.md) for the primary four-pane window, scan popup, Settings, and Report (issue #19; supersedes the issue #12 Main / Scan / DAT / Verify full-page map).
 - Native Win32 styling is not required. The GUI is a separate `yaRomChecker` binary; do not combine it with `yarc`.
 
-**Shared chrome**
+**Primary window**
 
-- Navigation contains Main, Scan, DAT / Verify, Settings, and Report.
-- Organize and External media appear only as disabled navigation placeholders for later work.
-- A persistent status bar shows the active collection root, the last scan summary (entry, hashed-container, and reused-container counts), the selected locale, and the resolved configuration path. The configuration path is read-only.
-
-**Main**
-
-- Main is the collection explorer, not a dashboard-only screen. When no collection is selected, it shows an explicit empty state.
-- It has an editable collection-root field, Browse, and Scan, Quick, Full, and Verify actions.
-- Its explorer layout places an `egui_ltreeview` folder tree beside an `egui_extras::TableBuilder` file table. The tree contains directories and ZIP/7z containers.
-- File-table columns are name (`entry_name`), path (`entry_path`), kind (`loose file`, `ZIP entry`, or `7z entry`), size, CRC32, MD5, SHA1, cache reused (`yes`/`no`), and DAT file status after verification (`Have`, `WrongName`, `WrongDump`, `Duplicate`, `Extra`, or empty).
-- Selecting a row shows its container path, container size, container modification time, and CRC32, MD5, and SHA1 hashes.
-- A recent-activity dashboard and organize controls are omitted until later.
+- Top: a menu bar (Scan, Settings, Report; Organize visible and disabled). No Main / Scan / DAT / Verify tab strip.
+- Four panes: top-left configured sources as a tree; bottom-left external media (later placeholder); top-right sets for the selected DAT; bottom-right inner files when the selected set is an archive.
+- Set-list and inner-file-list columns are TBD / later. Do not invent a frozen column set in the first GUI slice.
+- The DAT tree lists YAML `sources` (each node is a DAT plus its collection directory), not a collection-folder tree. With none configured, show the localized CLI `dat_missing_config` message and a path to Settings.
+- A persistent status bar shows the selected source's collection directory (or `No source selected`), the last scan summary (entry, hashed-container, and reused-container counts), the selected locale, and the resolved configuration path. The configuration path is read-only.
 
 **Scan**
 
-- Scan has a collection-root field, Browse, three modes (initial/full scan, quick rescan, and full rescan), and Start.
+- Scan is a modal popup over the four-pane window, not a full-page screen that replaces the explorer.
+- Start hashes unique `sources` collection directories into the shared cache. The popup has three modes (initial/full scan, quick rescan, and full rescan) and Start. An extra folder field is optional and writes into the same cache.
 - Progress shows the current container path, hashed-container count, reused-container count, and entry count.
 - Completion shows a result line with the same count meanings as the CLI scan summary and an error list with affected paths and messages.
 - Cancel is not required. If added, it is optional rather than an acceptance requirement.
 
-**DAT / Verify**
+**DAT display**
 
-- The configured-source list is read-only and shows each DAT's header name, version, DAT path, and paired collection directory.
-- Verify quick-scans unique source collections into the shared cache and then matches each configured pair independently.
-- Each source has its own summary showing collection files, present DAT ROMs, missing DAT ROMs, and `nodump` DAT ROMs.
-- The collection-file table has status, path, game display title, DAT ROM name, and `baddump` columns, with Have, WrongName, WrongDump, Duplicate, and Extra filters.
-- A second, separate DAT-ROM table has state (`Present`, `Missing`, or `nodump`), game display title, name, and `baddump` columns.
-- With no configured sources, the GUI shows the localized CLI `dat_missing_config` message, offers a path to Settings, and disables Verify. DAT parse/read errors are displayed without hiding results from readable sources.
+- DAT / Verify is not a separate full page. Selecting a source in the tree shows that DAT's sets in the top-right pane. Matching is per source (one DAT and its collection). GUI columns for status filters are TBD.
 - DAT downloads, download links, and DAT editing are omitted. MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping remain later work.
 
 **Settings**
