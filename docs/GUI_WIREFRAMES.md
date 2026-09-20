@@ -1,208 +1,175 @@
 # GUI wireframes
 
-These low-fidelity wireframes define the first `yaRomChecker` desktop GUI slice. They describe structure and visible controls, not final spacing, colors, or typography. The GUI is a separate binary from `yarc` and will share the core library when implemented.
+These low-fidelity wireframes define the first `yaRomChecker` desktop GUI slice described by issue #12. They specify structure and visible behavior, not final styling. The GUI will be a separate `yaRomChecker` binary using the shared core library; this document does not implement that binary.
 
 ## Shared application chrome
 
-Every screen uses the same frame:
-
 ```text
-+------------------------------------------------------------------------------+
-| yaRomChecker                                                                 |
-+------------------------------------------------------------------------------+
-| [Main] [Scan] [DAT] [Settings] [Report] [Organize - disabled]                |
-|                                      [External media - disabled]             |
-+------------------------------------------------------------------------------+
-| Screen content                                                               |
-|                                                                              |
-+------------------------------------------------------------------------------+
-| Ready | Config: C:\...\yaRomChecker.yaml (read-only)                         |
-+------------------------------------------------------------------------------+
++------------------------------------------------------------------------------------------------+
+| yaRomChecker                                                                                   |
++------------------------------------------------------------------------------------------------+
+| [Main] [Scan] [DAT / Verify] [Settings] [Report] [Organize - disabled]                         |
+|                                                     [External media - disabled]                |
++------------------------------------------------------------------------------------------------+
+| Screen content                                                                                 |
++------------------------------------------------------------------------------------------------+
+| Root: C:\ROMs | Last scan: entries 2,013 / hashed 31 / reused 1,209 | Locale: en              |
+| Config: C:\...\yaRomChecker.yaml (read-only)                                                   |
++------------------------------------------------------------------------------------------------+
 ```
 
-Elements:
-
-- Window title: `yaRomChecker`.
-- Primary navigation: Main, Scan, DAT, Settings, and Report. The current screen is visibly selected.
-- Future navigation: Organize and External media are visible but disabled and marked as later features.
-- Status bar: current activity or result summary; progress is shown while work is running.
-- Config path: the resolved YAML path is always visible and read-only. Settings can edit values stored in that file, but this path is not editable in the GUI.
-- Long paths and status text may be truncated visually, with the complete value available as a tooltip or selectable text.
-- Destructive actions are absent from this slice. No ROM or DAT downloader is offered.
+- Primary navigation: Main, Scan, DAT / Verify, Settings, and Report; the current screen is selected.
+- Organize and External media are visible, disabled navigation placeholders marked as later features.
+- The status bar always shows the collection root (or `No collection selected`), last scan entry/hashed-container/reused-container counts (or `No scan yet`), and selected locale.
+- The resolved YAML configuration path is always visible, selectable, and read-only.
+- Current activity may also appear while work runs. Long values may be truncated if their complete value is available in a tooltip or selectable text.
+- No ROM or DAT downloader is offered.
 
 ## Main
 
+Main is the collection explorer, not a dashboard-only landing screen.
+
 ```text
-+-- Main ----------------------------------------------------------------------+
-| Collection                                                                  |
-| Folder: [C:\ROMs____________________________________________] [Browse...]    |
-|                                                                             |
-| Quick actions                         Last result                            |
-| [Initial scan] [Quick rescan]         Files: 1,240   Errors: 0              |
-| [Full rescan] [Verify with DATs]      Have: 1,100    Missing: 12            |
-|                                                                             |
-| Recent activity                                                             |
-| 2026-09-20  Quick rescan  C:\ROMs                         Completed          |
-| 2026-09-19  Verify       C:\ROMs                         Completed          |
-|                                                                             |
-| Organize preview: later (disabled)     External media: later (disabled)     |
-+------------------------------------------------------------------------------+
++-- Main ----------------------------------------------------------------------------------------+
+| Collection root: [C:\ROMs____________________________________________________] [Browse...]     |
+| [Scan] [Quick] [Full] [Verify]                                                                |
++------------------------------+-----------------------------------------------------------------+
+| Folders and containers       | Files and archive entries                                      |
+| v C:\ROMs                    | Name     Path              Kind       Size CRC32 MD5 SHA1 Reuse DAT|
+|   > Console A                | game.bin C:\ROMs\game.bin loose file 2 MiB ...   ... ...  no    Have|
+|   v pack.zip                 | rom.bin  pack.zip/rom.bin  ZIP entry  1 MiB ...   ... ...  yes   Have|
+|     > inner                  | disk.bin set.7z/disk.bin   7z entry   4 MiB ...   ... ...  no         |
+|   > set.7z                   |                                                                 |
++------------------------------+-----------------------------------------------------------------+
+| Selected row                                                                                   |
+| Container path: C:\ROMs\pack.zip | Container size: 4 MiB | Container mtime: 2026-09-20 12:00 |
+| CRC32: ... | MD5: ... | SHA1: ...                                                            |
++------------------------------------------------------------------------------------------------+
 ```
 
-Elements:
-
-- Collection folder field and Browse action.
-- Initial scan, Quick rescan, Full rescan, and Verify with DATs actions. Each opens the corresponding screen with the selected folder carried forward.
-- Last-result summary with scan totals and, when verification exists, DAT status totals.
-- Recent activity list with timestamp, operation, collection path, and outcome. Empty state: `No scans have been run yet.`
-- Organize preview and External media are explicit disabled/later entries; neither can be opened in this slice.
-- Omitted/later: file rename, quarantine, deletion, media health checks, and copying from external media.
+- Editable collection-root field and Browse action.
+- Explorer tree implemented with `egui_ltreeview`; it shows directories and ZIP/7z containers.
+- File table implemented with `egui_extras::TableBuilder`. Columns: name (`entry_name`), path (`entry_path`), kind (`loose file`, `ZIP entry`, or `7z entry`), size, CRC32, MD5, SHA1, cache reused (`yes`/`no`), and DAT file status.
+- DAT status after verification is `Have`, `WrongName`, `WrongDump`, `Duplicate`, `Extra`, or empty.
+- Selected-row details show container path, container size, container modification time, and the selected entry's CRC32, MD5, and SHA1. A loose file supplies its own container details.
+- Scan, Quick, Full, and Verify carry the root to the corresponding screen. Scan selects initial/full mode; Quick and Full select those rescan modes. Work starts only after Start or Verify there.
+- Empty state: `Choose a collection root to browse or scan.` Tree, table, and details remain empty.
+- Omitted, later: recent-activity dashboard, rename, quarantine, deletion, media health checks, and copying from external media.
 
 ## Scan
 
 ```text
-+-- Scan ----------------------------------------------------------------------+
-| Collection folder: [C:\ROMs________________________________] [Browse...]     |
-| Mode: (o) Initial/full scan  ( ) Quick rescan  ( ) Full rescan              |
-|                                                                             |
-| [Start scan] [Cancel - enabled only while running]                          |
-| Progress: [####################--------------------] 50%                     |
-| Current: C:\ROMs\Example.zip                                                |
-|                                                                             |
-| Folders                         Files / archive entries                      |
-| v C:\ROMs                      | Name       Type  Size   CRC32  MD5  SHA1    |
-|   > Console A                  | Game.zip   ZIP   4 MiB  ...    ...  ...     |
-|   > Console B                  |  `- rom   Entry 2 MiB  ...    ...  ...     |
-|                                                                             |
-| Summary: 1,240 files; 86 archives; 2,013 entries; 0 errors                  |
-| [Open Report]                                                               |
-+------------------------------------------------------------------------------+
++-- Scan ----------------------------------------------------------------------------------------+
+| Collection root: [C:\ROMs____________________________________________________] [Browse...]     |
+| Mode: (o) Initial/full scan  ( ) Quick rescan  ( ) Full rescan                                |
+| [Start]                                                                                       |
+| Progress: [####################--------------------]                                           |
+| Current container: C:\ROMs\pack.zip                                                          |
+| Containers hashed: 31 | Containers reused: 1,209 | Entries: 2,013                            |
+| Result: 2,013 entries; 31 hashed; 1,209 reused; 0 errors                                     |
+| Errors                                                                                        |
+| C:\ROMs\broken.zip: unsupported or unreadable archive                                        |
++------------------------------------------------------------------------------------------------+
 ```
 
-Elements:
-
-- Collection folder field and Browse action.
-- Mutually exclusive Initial/full scan, Quick rescan, and Full rescan modes.
-  - Initial/full and Full rescan stream and re-hash every loose file and ZIP/7z entry.
-  - Quick rescan reuses cached hashes only when container path, file name, size, and modification time all match; otherwise it re-hashes.
-- Start scan action and a Cancel action that is disabled when idle.
-- Progress indicator, percentage or indeterminate state, and current path. Archives are decompressed to the hashing stream and are never extracted to disk.
-- Explorer-style folder tree and results table. The table lists name, loose/archive-entry type, size, CRC32, MD5, SHA1, and per-row error when applicable.
-- Completed summary: file, archive, inner-entry, reused-cache, re-hashed, and error counts.
-- Open Report action after results exist.
-- Empty state: `Choose a collection folder and scan mode.`
-- Omitted/later: RAR, standalone `.zst`, header stripping, and archive extraction controls.
+- Collection-root field and Browse action.
+- Three mutually exclusive modes: Initial/full scan, Quick rescan, and Full rescan.
+  - Initial/full and Full re-hash every loose-file container and ZIP/7z container, streaming inner entries into the hashers.
+  - Quick reuses hashes only when container path, file name, size, and modification time match; otherwise it re-hashes the container.
+- Start action. Cancel is not required and is omitted; a later implementation may add it as optional.
+- Progress shows current container path, hashed-container count, reused-container count, and entry count. Archives are never extracted to disk.
+- Completion uses the same count meanings and wording as the CLI scan summary.
+- An error list identifies affected paths and messages without discarding successful results.
+- Empty state: `Choose a collection root and scan mode.`
+- Omitted, later: RAR, standalone `.zst`, header stripping, archive extraction controls, and required cancellation.
 
 ## DAT / Verify
 
-The navigation label is `DAT`; the screen heading makes the operation explicit as `DAT / Verify`.
-
 ```text
-+-- DAT / Verify --------------------------------------------------------------+
-| Collection folder: [C:\ROMs________________________________] [Browse...]     |
-| User-supplied DATs (from configuration)                     [Open Settings] |
-| [x] No-Intro Example.dat   Logiqx XML   No-Intro Example   2026-09           |
-| [x] TOSEC Example.dat      CMP text     TOSEC Example      2026-08           |
-|                                                                             |
-| [Verify] [Cancel - enabled only while running]                              |
-| Progress: [################################--------] Matching...             |
-|                                                                             |
-| Filters: [All v] [Search_________________________________]                   |
-| File / entry       DAT title       DAT ROM       Status       Flags         |
-| game.bin           Example Game    game.bin      Have                       |
-| GAME2.BIN          Example Game 2  game2.bin     WrongName                  |
-| --                  Example Game 3  game3.bin     Missing                    |
-| bad.bin            Example Game 4  bad.bin       Have         baddump       |
-|                                                                             |
-| Have 1 | WrongName 1 | WrongDump 0 | Duplicate 0 | Extra 0 | Missing 1     |
-| [Open Report]                                                               |
-+------------------------------------------------------------------------------+
++-- DAT / Verify --------------------------------------------------------------------------------+
+| Collection root: [C:\ROMs____________________________________________________] [Browse...]     |
+| Configured DATs                                                               [Open Settings] |
+| Header name             Version       Path                                                    |
+| No-Intro Example        2026-09       C:\DATs\No-Intro.dat                                    |
+| TOSEC Example           2026-08       C:\DATs\TOSEC.dat                                       |
+| [Verify]  (quick scan, then match)                                                            |
+| Summary: files 1,240 | present 1,112 | missing 12 | nodump 3                                 |
+| DAT read errors: C:\DATs\broken.dat: line 12: invalid ROM record                              |
+|                                                                                                |
+| File results   Filters: [Have] [WrongName] [WrongDump] [Duplicate] [Extra]                    |
+| Status      Path                    Game              DAT ROM name       baddump               |
+| Have        C:\ROMs\game.bin        Example Game      game.bin                                   |
+| WrongName   C:\ROMs\GAME2.BIN       Example Game 2    game2.bin                                  |
+|                                                                                                |
+| DAT ROM results                                                                               |
+| State       Game                    Name               baddump                                  |
+| Present     Example Game             game.bin                                                   |
+| Missing     Example Game 3           game3.bin                                                  |
+| nodump      Example Game 4           undumped.bin                                               |
++------------------------------------------------------------------------------------------------+
 ```
 
-Elements:
-
-- Collection folder field and Browse action.
-- Read-only list of configured, user-supplied DAT paths with enabled selection, detected format, header name/description, and version when present. Open Settings changes the configured list.
-- Verify and context-sensitive Cancel actions with progress/activity display. Verification performs a quick scan first.
-- Result table connecting collection file or archive entry, DAT display title, exact DAT ROM name, status, and flags.
-- Filters for All, Have, WrongName, WrongDump, Duplicate, Extra, Missing, nodump, and baddump; text search filters visible rows.
-- Summary counts for Have, WrongName, WrongDump, Duplicate, Extra, Missing, nodump, and baddump.
-- `nodump` is informational, is not counted as Missing, and cannot be filled. `baddump` is visibly flagged while matching normally.
-- Name comparison is exact and case-sensitive. TOSEC-style names are displayed unchanged. Hash identity takes precedence over name identity, and all hashes and optional size supplied by a DAT ROM must agree.
-- Empty states: `No DAT files are configured.` with Open Settings, and `Run verification to see results.`
-- Omitted/later: DAT downloads or links, editing DAT contents, MAME/arcade set completeness, Redump multi-file sets, CHD, parent/clone grouping, and other data models listed under Remaining DAT work in the requirements.
+- Collection-root field and Browse action.
+- Read-only DAT list showing header name, version, and configured path. Open Settings edits the list.
+- Verify performs a quick scan first and then matches against all readable configured DATs.
+- Summary shows collection files, DAT ROMs present, DAT ROMs missing, and DAT ROMs marked `nodump`.
+- First table: collection-file status, path, game display title, exact DAT ROM name, and visible `baddump`; filters are Have, WrongName, WrongDump, Duplicate, and Extra.
+- Second, separate table: DAT-ROM state (Present, Missing, or `nodump`), game display title, exact name, and visible `baddump`.
+- Names compare exactly and case-sensitively; TOSEC-style names remain unchanged. Hash identity takes precedence, and all DAT-provided hashes and optional size must agree.
+- With no configured DATs, show the localized CLI `dat_missing_config` message in the empty DAT-list area, offer Open Settings, and disable Verify.
+- DAT read errors show their DAT path and diagnostic; readable DATs may still produce results.
+- Before verification, both tables show `Run verification to see results.`
+- `nodump` is informational, is not Missing, and cannot be filled. `baddump` matches normally and stays visibly flagged.
+- Omitted, later: cancellation, DAT downloads/links, DAT editing, MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping.
 
 ## Settings
 
 ```text
-+-- Settings ------------------------------------------------------------------+
-| Configuration file (read-only)                                              |
-| C:\Program Files\yaRomChecker\yaRomChecker.yaml                              |
-|                                                                             |
-| General                                                                     |
-| Locale: [en v]                                                              |
-| Cache path: [cache.sqlite___________________________________] [Browse...]    |
-| Log path:   [logs___________________________________________] [Browse...]    |
-|                                                                             |
-| DAT files                                                                   |
-| C:\DATs\No-Intro.dat                                      [Remove]          |
-| C:\DATs\TOSEC.dat                                         [Remove]          |
-| [Add DAT files...]                                                          |
-|                                                                             |
-| [Save] [Reload]                                                             |
-| Validation: Settings are valid.                                             |
-+------------------------------------------------------------------------------+
++-- Settings ------------------------------------------------------------------------------------+
+| Configuration file (read-only): C:\...\yaRomChecker.yaml                                      |
+| Locale: [en v]    choices: en, ja                                                            |
+| Cache path: [cache.sqlite____________________________________________________] [Browse...]     |
+| DAT files                                                                                     |
+| C:\DATs\No-Intro.dat                                                          [Remove]        |
+| C:\DATs\TOSEC.dat                                                             [Remove]        |
+| [Add...] [Browse...]                                                                            |
+| [Save]                                                                                        |
++------------------------------------------------------------------------------------------------+
 ```
 
-Elements:
-
-- Resolved configuration-file path, read-only.
-- Locale selector populated from available resources; English (`en`) is the default.
-- Editable cache path and log path, with Browse actions. Relative paths are resolved from the YAML file's directory.
-- Ordered list of user-supplied DAT file paths with Add and Remove actions. Paths may be absolute or relative to the YAML file.
-- Save writes settings to YAML only. Scan records and hashes remain in the cache, never in YAML.
-- Reload discards unsaved field edits after confirmation and reloads the file.
-- Inline validation for malformed/unsupported values, unwritable destinations, and missing DAT paths. Missing DATs are warnings so other valid settings can still be saved.
-- Unsaved-changes indicator; leaving the screen with edits prompts Save, Discard, or Cancel.
-- Omitted/later: changing the configuration-file location, theme controls, automatic DAT downloads, and settings stored in a database.
+- Read-only resolved configuration-file path.
+- Locale selector with `en` and `ja`; English is the default.
+- Editable `cache_path` with Browse.
+- Ordered `dats` list with Add, Remove, and Browse. Paths may be absolute or YAML-relative.
+- Save writes settings to YAML only; scan records and hashes remain in the cache.
+- If YAML is missing, Save creates it with the currently displayed settings (including defaults). If it exists, loading preserves its values and Save updates that same file only in response to the explicit Save action; automatic create-if-missing behavior never overwrites existing YAML.
+- Missing DAT paths and invalid or unwritable settings appear inline; missing DATs are warnings so other valid settings can still be saved.
+- Omitted, later: editing config-file location, themes, automatic DAT downloads, and database-backed settings.
 
 ## Report
 
 ```text
-+-- Report --------------------------------------------------------------------+
-| Report: [Latest verification v]   DAT: [All DATs v]                         |
-| Filters: [All statuses v] [Search_______________________]                    |
-|                                                                             |
-| Summary                                                                     |
-| Have 1,100 | WrongName 8 | WrongDump 2 | Duplicate 4 | Extra 25             |
-| Present 1,112 | Missing 12 | nodump 3 | baddump 1                           |
-|                                                                             |
-| Collection path       DAT title       Expected name      Status      Detail |
-| C:\ROMs\game.bin      Example Game    game.bin           Have               |
-| C:\ROMs\GAME2.BIN     Example Game 2  game2.bin          WrongName  Case    |
-| --                    Example Game 3  game3.bin          Missing             |
-|                                                                             |
-| Selected row details                                                        |
-| Size: ...  CRC32: ...  MD5: ...  SHA1: ...  DAT source: ...                 |
-| [Copy summary]                                                              |
-+------------------------------------------------------------------------------+
++-- Report --------------------------------------------------------------------------------------+
+| Last scan summary (read-only)                                                                 |
+| Entries: 2,013 | Containers hashed: 31 | Containers reused: 1,209 | Errors: 0                 |
+| Last DAT summary (read-only)                                                                  |
+| Files: 1,240 | Present: 1,112 | Missing: 12 | nodump: 3                                      |
+| [Copy summaries]  [Export - later, disabled]                                                  |
+| Organize preview: later (disabled placeholder)                                                |
++------------------------------------------------------------------------------------------------+
 ```
 
-Elements:
-
-- Report selector for the latest available scan or verification result, plus a DAT selector for combined or individual DAT results.
-- Status filter and text search.
-- Summary totals for scan errors and all applicable verification states: Have, WrongName, WrongDump, Duplicate, Extra, Present, Missing, nodump, and baddump.
-- Explorer-style results table with collection path, DAT title, expected exact name, status, flags, and a concise mismatch/error detail.
-- Selected-row details show actual and expected size and available CRC32, MD5, and SHA1 values, plus DAT source/header metadata.
-- Copy summary copies a plain-English textual summary suitable for diagnostics without copying ROM contents.
-- Empty state: `No report is available. Run a scan or verification first.` with navigation to Scan or DAT.
-- Omitted/later: HTML/PDF export, report-history retention policy, automatic upload/sharing, organization actions, and any ROM or DAT file content in a report.
+- Read-only last-scan summary: entry, hashed-container, reused-container, and error counts.
+- Read-only last-DAT summary: file, present, missing, and `nodump` counts.
+- Copy summaries places a plain-English diagnostic summary on the clipboard without ROM contents.
+- Export is a disabled later stub. Organize preview is a disabled later placeholder with no rename, quarantine, or delete action.
+- Empty state: `No report is available. Run a scan or verification first.`
+- Omitted, later: export implementation, report history, automatic sharing, and organize execution.
 
 ## Navigation and state notes
 
-- Main actions preselect a mode and navigate to Scan or DAT; work starts only after the user confirms with Start scan or Verify.
-- Scan and verification results remain available when navigating between screens during the current session. Persistence beyond the scan cache is a later decision.
-- A running operation is reflected in the shared status bar. Navigating away does not imply cancellation.
-- Errors are attached to the affected row where possible and summarized in the status bar and Report; one unreadable file should not erase already completed results.
-- Keyboard order follows the visible top-to-bottom, left-to-right layout. Disabled/later controls are skipped.
+- Main actions preselect an operation and navigate; they do not start it immediately.
+- Results remain available during the current session. Persistence beyond the scan cache is a later decision.
+- Running activity appears in shared status. Navigating away does not imply cancellation.
+- Errors attach to affected items where practical; one unreadable item does not erase successful results.
+- Keyboard order follows visible layout. Disabled/later controls are skipped.
