@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -351,6 +351,19 @@ pub enum DatRomStatus {
     NoDump,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetStatus {
+    Complete,
+    Incomplete,
+    MissingSet,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetMatch {
+    pub game: String,
+    pub status: SetStatus,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileMatch {
     pub entry_path: String,
@@ -372,6 +385,7 @@ pub struct DatRomMatch {
 pub struct MatchReport {
     pub files: Vec<FileMatch>,
     pub roms: Vec<DatRomMatch>,
+    pub sets: Vec<SetMatch>,
 }
 
 pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport {
@@ -386,9 +400,7 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
             .find(|(_, rom)| rom.dump_status != DumpStatus::NoDump && rom_hashes_match(rom, entry))
         {
             let newly_filled = filled_roms.insert(index);
-            if newly_filled
-                && matches!(entry.kind, EntryKind::ZipEntry | EntryKind::SevenZEntry)
-            {
+            if newly_filled && matches!(entry.kind, EntryKind::ZipEntry | EntryKind::SevenZEntry) {
                 archive_fills.insert((rom.game.clone(), entry.container_path.clone()));
             }
             let status = if !newly_filled {
@@ -408,7 +420,7 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
             files.push(file_match(entry, FileStatus::Extra, None));
         }
     }
-    let roms = rom_index
+    let roms: Vec<DatRomMatch> = rom_index
         .into_iter()
         .enumerate()
         .map(|(index, rom)| DatRomMatch {
@@ -429,7 +441,36 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
             dump_status: rom.dump_status,
         })
         .collect();
-    MatchReport { files, roms }
+    let sets = score_sets(&roms);
+    MatchReport { files, roms, sets }
+}
+
+fn score_sets(roms: &[DatRomMatch]) -> Vec<SetMatch> {
+    let mut indexes = HashMap::new();
+    let mut counts: Vec<(String, usize, usize)> = Vec::new();
+    for rom in roms.iter().filter(|rom| rom.status != DatRomStatus::NoDump) {
+        let index = *indexes.entry(rom.game.clone()).or_insert_with(|| {
+            counts.push((rom.game.clone(), 0, 0));
+            counts.len() - 1
+        });
+        counts[index].1 += 1;
+        if rom.status == DatRomStatus::Present {
+            counts[index].2 += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(game, required, filled)| SetMatch {
+            game,
+            status: if filled == required {
+                SetStatus::Complete
+            } else if filled == 0 {
+                SetStatus::MissingSet
+            } else {
+                SetStatus::Incomplete
+            },
+        })
+        .collect()
 }
 
 fn file_match(entry: &ScanEntry, status: FileStatus, rom: Option<&&DatRom>) -> FileMatch {
@@ -536,6 +577,45 @@ mod tests {
             sha1: Some("1111111111111111111111111111111111111111".into()),
             ..collection.roms[0].clone()
         });
+        collection
+    }
+
+    fn disc_game(include_nodump: bool) -> DatFile {
+        let mut collection = DatFile {
+            path: "invented-disc.dat".into(),
+            header: DatHeader::default(),
+            roms: vec![
+                DatRom {
+                    game: "Invented Disc".into(),
+                    name: "disc.cue".into(),
+                    size: Some(3),
+                    crc32: None,
+                    md5: None,
+                    sha1: Some(SHA1.into()),
+                    dump_status: DumpStatus::Good,
+                },
+                DatRom {
+                    game: "Invented Disc".into(),
+                    name: "track01.bin".into(),
+                    size: Some(3),
+                    crc32: None,
+                    md5: None,
+                    sha1: Some("1111111111111111111111111111111111111111".into()),
+                    dump_status: DumpStatus::Good,
+                },
+            ],
+        };
+        if include_nodump {
+            collection.roms.push(DatRom {
+                game: "Invented Disc".into(),
+                name: "unknown.bin".into(),
+                size: None,
+                crc32: None,
+                md5: None,
+                sha1: None,
+                dump_status: DumpStatus::NoDump,
+            });
+        }
         collection
     }
 
@@ -720,5 +800,70 @@ mod tests {
         let report = match_collection(&[entry("name-target.rom", SHA1, 3)], &[collection]);
         assert_eq!(report.files[0].status, FileStatus::WrongName);
         assert_eq!(report.files[0].dat_name.as_deref(), Some("hash-target.rom"));
+    }
+
+    #[test]
+    fn cue_and_bin_filled_is_a_complete_set() {
+        let report = match_collection(
+            &[
+                entry("disc.cue", SHA1, 3),
+                entry("track01.bin", "1111111111111111111111111111111111111111", 3),
+            ],
+            &[disc_game(false)],
+        );
+        assert_eq!(
+            report.sets,
+            vec![SetMatch {
+                game: "Invented Disc".into(),
+                status: SetStatus::Complete,
+            }]
+        );
+    }
+
+    #[test]
+    fn bin_filled_and_cue_missing_is_an_incomplete_set() {
+        let report = match_collection(
+            &[entry(
+                "track01.bin",
+                "1111111111111111111111111111111111111111",
+                3,
+            )],
+            &[disc_game(false)],
+        );
+        assert_eq!(report.sets[0].status, SetStatus::Incomplete);
+    }
+
+    #[test]
+    fn game_without_collection_files_is_a_missing_set() {
+        let report = match_collection(&[], &[disc_game(false)]);
+        assert_eq!(report.sets[0].status, SetStatus::MissingSet);
+    }
+
+    #[test]
+    fn nodump_rom_does_not_make_a_filled_set_incomplete() {
+        let report = match_collection(
+            &[
+                entry("disc.cue", SHA1, 3),
+                entry("track01.bin", "1111111111111111111111111111111111111111", 3),
+            ],
+            &[disc_game(true)],
+        );
+        assert_eq!(report.sets[0].status, SetStatus::Complete);
+    }
+
+    #[test]
+    fn filled_baddump_rom_counts_toward_set_completion() {
+        let mut collection = dat("game.rom");
+        collection.roms[0].dump_status = DumpStatus::BadDump;
+        let report = match_collection(&[entry("game.rom", SHA1, 3)], &[collection]);
+        assert_eq!(report.sets[0].status, SetStatus::Complete);
+        assert_eq!(report.files[0].dump_status, Some(DumpStatus::BadDump));
+    }
+
+    #[test]
+    fn nodump_only_game_is_omitted_from_set_scores() {
+        let mut collection = dat("unknown.rom");
+        collection.roms[0].dump_status = DumpStatus::NoDump;
+        assert!(match_collection(&[], &[collection]).sets.is_empty());
     }
 }
