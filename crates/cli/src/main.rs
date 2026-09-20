@@ -654,6 +654,7 @@ mod tests {
                 md5: String::new(),
                 sha1: String::new(),
             },
+            last_hashed_ns: 0,
             reused: false,
         };
         let inside = root.join("game.rom");

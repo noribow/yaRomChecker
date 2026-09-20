@@ -1,0 +1,23 @@
+[package]
+name = "yaromchecker-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "yaRomChecker"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+eframe.workspace = true
+egui_extras.workspace = true
+rfd.workspace = true
+serde.workspace = true
+serde_yml.workspace = true
+yaromchecker-core = { path = "../core" }
+
+[dev-dependencies]
+tempfile.workspace = true

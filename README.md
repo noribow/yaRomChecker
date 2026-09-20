@@ -10,7 +10,7 @@ This application is created with AI.
 
 Early development. The first release targets Windows. Linux is planned for a later release. macOS is not a current goal.
 
-This milestone ships the shared core library and the `yarc` CLI scanner. The GUI is not included yet.
+This milestone includes the `yaRomChecker` GUI and the `yarc` CLI, both backed by the shared core library.
 
 ## Build
 
@@ -56,7 +56,6 @@ DAT files are not bundled or downloaded by yaRomChecker, and this project does n
 
 ## Planned
 
-- GUI (`yaRomChecker`) sharing the same core as `yarc`
 - DAT families that need a different data model than one file ↔ one ROM (see Remaining DAT work in [Requirements](docs/REQUIREMENTS.md))
 - Organize (rename / quarantine), after a dry-run preview
 - External archive media checks (read-only; no writing to those media)

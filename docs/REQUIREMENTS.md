@@ -120,9 +120,10 @@ In scope later: media health; copy **from** media into the working collection to
 
 **Primary window**
 
-- Top: a menu bar (Scan, Settings, Report; Organize visible and disabled). No Main / Scan / DAT / Verify tab strip.
-- Four panes: top-left configured sources as a tree; bottom-left external media (later placeholder); top-right sets for the selected DAT; bottom-right inner files when the selected set is an archive.
-- Set-list and inner-file-list columns are TBD / later. Do not invent a frozen column set in the first GUI slice.
+- Top: a menu bar (Scan, Verify, Settings, Report; Organize visible and disabled). No Main / Scan / DAT / Verify tab strip.
+- Four panes: top-left configured sources as a tree; bottom-left external media (later placeholder); top-right sets for the selected DAT; bottom-right members of the selected set when it is not a single loose file.
+- Set-list columns: name, set status, and a count for each status on that set. Inner-file columns: name, size, mtime, hashes, last-checked date.
+- Matching (verify) runs only when the user asks (menu Verify, or equivalent). Selecting a DAT or set does not start a match.
 - The DAT tree lists YAML `sources` (each node is a DAT plus its collection directory), not a collection-folder tree. With none configured, show the localized CLI `dat_missing_config` message and a path to Settings.
 - A persistent status bar shows the selected source's collection directory (or `No source selected`), the last scan summary (entry, hashed-container, and reused-container counts), the selected locale, and the resolved configuration path. The configuration path is read-only.
 
@@ -134,9 +135,13 @@ In scope later: media health; copy **from** media into the working collection to
 - Completion shows a result line with the same count meanings as the CLI scan summary and an error list with affected paths and messages.
 - Cancel is not required. If added, it is optional rather than an acceptance requirement.
 
+**Verify**
+
+- Verify runs only from an explicit user action (menu Verify or equivalent). It does not run on DAT or set selection. It matches the selected source, or all sources if the user chooses that, using existing per-source rules.
+
 **DAT display**
 
-- DAT / Verify is not a separate full page. Selecting a source in the tree shows that DAT's sets in the top-right pane. Matching is per source (one DAT and its collection). GUI columns for status filters are TBD.
+- DAT / Verify is not a separate full page. Selecting a source lists that DAT's sets; status and counts appear after the user runs Verify. Matching is per source. The bottom-right pane lists member files when the selected set is not a single loose file.
 - DAT downloads, download links, and DAT editing are omitted. MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping remain later work.
 
 **Settings**
