@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{Result, ScanEntry};
+use crate::{EntryKind, Result, ScanEntry};
 use quick_xml::{Reader, events::Event};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -347,6 +347,7 @@ pub enum FileStatus {
 pub enum DatRomStatus {
     Present,
     Missing,
+    MissingInArchive,
     NoDump,
 }
 
@@ -376,6 +377,7 @@ pub struct MatchReport {
 pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport {
     let rom_index: Vec<&DatRom> = dats.iter().flat_map(|dat| &dat.roms).collect();
     let mut filled_roms = HashSet::new();
+    let mut archive_fills = HashSet::new();
     let mut files = Vec::with_capacity(entries.len());
     for entry in entries {
         if let Some((index, rom)) = rom_index
@@ -383,7 +385,13 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
             .enumerate()
             .find(|(_, rom)| rom.dump_status != DumpStatus::NoDump && rom_hashes_match(rom, entry))
         {
-            let status = if !filled_roms.insert(index) {
+            let newly_filled = filled_roms.insert(index);
+            if newly_filled
+                && matches!(entry.kind, EntryKind::ZipEntry | EntryKind::SevenZEntry)
+            {
+                archive_fills.insert((rom.game.clone(), entry.container_path.clone()));
+            }
+            let status = if !newly_filled {
                 FileStatus::Duplicate
             } else if entry.entry_name == rom.name {
                 FileStatus::Have
@@ -410,6 +418,11 @@ pub fn match_collection(entries: &[ScanEntry], dats: &[DatFile]) -> MatchReport 
                 DatRomStatus::NoDump
             } else if filled_roms.contains(&index) {
                 DatRomStatus::Present
+            } else if archive_fills
+                .iter()
+                .any(|(game, _container_path)| game == &rom.game)
+            {
+                DatRomStatus::MissingInArchive
             } else {
                 DatRomStatus::Missing
             },
@@ -480,6 +493,16 @@ mod tests {
         }
     }
 
+    fn archive_entry(name: &str, sha1: &str, kind: EntryKind) -> ScanEntry {
+        ScanEntry {
+            container_path: "collection/archive.bin".into(),
+            container_name: "archive.bin".into(),
+            entry_path: format!("collection/archive.bin/{name}"),
+            kind,
+            ..entry(name, sha1, 3)
+        }
+    }
+
     fn dat(name: &str) -> DatFile {
         DatFile {
             path: "test.dat".into(),
@@ -502,6 +525,18 @@ mod tests {
             report.files.iter().map(|file| file.status).collect(),
             report.roms.iter().map(|rom| rom.status).collect(),
         )
+    }
+
+    fn two_rom_game() -> DatFile {
+        let mut collection = dat("present.rom");
+        collection.roms.push(DatRom {
+            name: "absent.rom".into(),
+            crc32: None,
+            md5: None,
+            sha1: Some("1111111111111111111111111111111111111111".into()),
+            ..collection.roms[0].clone()
+        });
+        collection
     }
 
     #[test]
@@ -571,6 +606,78 @@ mod tests {
         assert_eq!(
             statuses(&[entry("game.rom", "bad", 3)], dat("game.rom")),
             (vec![FileStatus::WrongDump], vec![DatRomStatus::Missing])
+        );
+    }
+
+    #[test]
+    fn missing_sibling_of_zip_filled_rom_is_missing_in_archive() {
+        assert_eq!(
+            statuses(
+                &[archive_entry("present.rom", SHA1, EntryKind::ZipEntry)],
+                two_rom_game()
+            ),
+            (
+                vec![FileStatus::Have],
+                vec![DatRomStatus::Present, DatRomStatus::MissingInArchive]
+            )
+        );
+    }
+
+    #[test]
+    fn game_without_collection_files_is_missing() {
+        assert_eq!(
+            statuses(&[], two_rom_game()).1,
+            vec![DatRomStatus::Missing, DatRomStatus::Missing]
+        );
+    }
+
+    #[test]
+    fn wrong_dump_in_archive_does_not_create_archive_evidence() {
+        assert_eq!(
+            statuses(
+                &[archive_entry("present.rom", "bad", EntryKind::SevenZEntry)],
+                two_rom_game()
+            ),
+            (
+                vec![FileStatus::WrongDump],
+                vec![DatRomStatus::Missing, DatRomStatus::Missing]
+            )
+        );
+    }
+
+    #[test]
+    fn loose_file_fill_does_not_create_archive_evidence() {
+        assert_eq!(
+            statuses(&[entry("present.rom", SHA1, 3)], two_rom_game()).1,
+            vec![DatRomStatus::Present, DatRomStatus::Missing]
+        );
+    }
+
+    #[test]
+    fn archive_fill_does_not_affect_a_different_game() {
+        let mut collection = two_rom_game();
+        collection.roms[1].game = "Other Game".into();
+        assert_eq!(
+            statuses(
+                &[archive_entry("present.rom", SHA1, EntryKind::ZipEntry)],
+                collection
+            )
+            .1,
+            vec![DatRomStatus::Present, DatRomStatus::Missing]
+        );
+    }
+
+    #[test]
+    fn nodump_sibling_of_archive_fill_remains_nodump() {
+        let mut collection = two_rom_game();
+        collection.roms[1].dump_status = DumpStatus::NoDump;
+        assert_eq!(
+            statuses(
+                &[archive_entry("present.rom", SHA1, EntryKind::ZipEntry)],
+                collection
+            )
+            .1,
+            vec![DatRomStatus::Present, DatRomStatus::NoDump]
         );
     }
 
