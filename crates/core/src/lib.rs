@@ -6,7 +6,9 @@ mod hash;
 mod scan;
 
 pub use cache::ScanCache;
-pub use dat::{DatFile, MatchReport, MatchStatus, MatchedEntry, MissingRom, match_collection};
+pub use dat::{
+    DatFile, DatRomMatch, DatRomStatus, FileMatch, FileStatus, MatchReport, match_collection,
+};
 pub use hash::{Hashes, hash_reader};
 pub use scan::{EntryKind, ScanEntry, ScanMode, ScanReport, Scanner};
 

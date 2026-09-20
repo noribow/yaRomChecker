@@ -7,7 +7,9 @@ use std::{
 use anyhow::{Context, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
-use yaromchecker_core::{DatFile, ScanCache, ScanMode, Scanner, match_collection};
+use yaromchecker_core::{
+    DatFile, DatRomStatus, FileStatus, ScanCache, ScanMode, Scanner, match_collection,
+};
 
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
 const JA_MESSAGES: &str = include_str!("../../../locales/ja.yaml");
@@ -307,26 +309,48 @@ fn print_dat_report(
             )
         })?);
     }
-    let matched = match_collection(entries, &dats);
+    let report = match_collection(entries, &dats);
+    let present = report
+        .roms
+        .iter()
+        .filter(|rom| rom.status == DatRomStatus::Present)
+        .count();
+    let missing = report.roms.len() - present;
     println!(
         "{}",
         messages.format(
             "dat_summary",
-            "DAT match: {matched} matched, {extra} extra, {missing} missing.",
+            "DAT verification: {files} files, {present} present, {missing} missing.",
             &[
-                ("matched", matched.matched.len().to_string()),
-                ("extra", matched.extra.len().to_string()),
-                ("missing", matched.missing.len().to_string()),
+                ("files", report.files.len().to_string()),
+                ("present", present.to_string()),
+                ("missing", missing.to_string()),
             ],
         )
     );
-    for entry in &matched.matched {
+    for entry in &report.files {
+        let status = file_status_text(messages, entry.status);
+        if entry.status == FileStatus::Extra {
+            println!(
+                "{}",
+                messages.format(
+                    "dat_extra_line",
+                    "{status}  {path}",
+                    &[
+                        ("status", status.to_owned()),
+                        ("path", entry.entry_path.clone()),
+                    ],
+                )
+            );
+            continue;
+        }
         println!(
             "{}",
             messages.format(
-                "dat_matched_line",
-                "matched  {path}  {game}/{name}",
+                "dat_file_line",
+                "{status}  {path}  {game}/{name}",
                 &[
+                    ("status", status.to_owned()),
                     ("path", entry.entry_path.clone()),
                     ("game", entry.game.clone().unwrap_or_default()),
                     ("name", entry.dat_name.clone().unwrap_or_default()),
@@ -334,17 +358,11 @@ fn print_dat_report(
             )
         );
     }
-    for entry in &matched.extra {
-        println!(
-            "{}",
-            messages.format(
-                "dat_extra_line",
-                "extra    {path}",
-                &[("path", entry.entry_path.clone())],
-            )
-        );
-    }
-    for rom in &matched.missing {
+    for rom in report
+        .roms
+        .iter()
+        .filter(|rom| rom.status == DatRomStatus::Missing)
+    {
         println!(
             "{}",
             messages.format(
@@ -355,6 +373,16 @@ fn print_dat_report(
         );
     }
     Ok(())
+}
+
+fn file_status_text(messages: &Messages, status: FileStatus) -> &str {
+    match status {
+        FileStatus::Have => messages.text("status_have", "Have"),
+        FileStatus::WrongName => messages.text("status_wrong_name", "WrongName"),
+        FileStatus::WrongDump => messages.text("status_wrong_dump", "WrongDump"),
+        FileStatus::Duplicate => messages.text("status_duplicate", "Duplicate"),
+        FileStatus::Extra => messages.text("status_extra", "Extra"),
+    }
 }
 
 fn main() {
@@ -416,5 +444,24 @@ mod tests {
         assert!(!ensure_config(&path, &messages).unwrap());
         let kept = fs::read_to_string(&path).unwrap();
         assert!(kept.contains("keep-me.sqlite3"));
+    }
+
+    #[test]
+    fn provides_english_text_for_every_file_status() {
+        let messages = Messages::load("en").unwrap();
+        assert_eq!(file_status_text(&messages, FileStatus::Have), "Have");
+        assert_eq!(
+            file_status_text(&messages, FileStatus::WrongName),
+            "WrongName"
+        );
+        assert_eq!(
+            file_status_text(&messages, FileStatus::WrongDump),
+            "WrongDump"
+        );
+        assert_eq!(
+            file_status_text(&messages, FileStatus::Duplicate),
+            "Duplicate"
+        );
+        assert_eq!(file_status_text(&messages, FileStatus::Extra), "Extra");
     }
 }

@@ -65,6 +65,10 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 
 - User-supplied Logiqx XML. Do not bundle copyrighted DAT dumps.
 - A collection file matches a DAT ROM only if **every hash listed on that ROM** agrees with the scan (CRC32, MD5, and SHA1, whichever the DAT provides). Size, if present in the DAT, must also agree. One matching algorithm is not enough when the DAT lists several.
+- ROM names use an exact, case-sensitive comparison against `ScanEntry.entry_name`; no case folding or fuzzy matching is performed.
+- Hash identity takes precedence over name identity. After a file hash-matches a DAT ROM, its name is compared only with that ROM's name.
+- File statuses are `Have` (hash and name match), `WrongName` (hash matches but the name does not, including case-only differences), `WrongDump` (name matches but hashes or size do not), `Duplicate` (a later hash hit for a DAT ROM already filled by the first hit in scan order), and `Extra` (neither identity matches).
+- Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it and `Missing` otherwise. `WrongDump` does not fill a DAT ROM.
 
 ## Organize (later, destructive)
 
