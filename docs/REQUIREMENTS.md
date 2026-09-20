@@ -29,7 +29,7 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - Default file: `yaRomChecker.yaml` in the **same directory as the executable** (not the current working directory).
 - CLI may pass `--config <path>`.
 - If the config file **does not exist**, create it at that path with the default contents (`locale: en` and a default `cache_path`) and then load it. Do not overwrite an existing file.
-- Optional `dats:` list of Logiqx XML DAT paths (relative to the YAML file, or absolute). Used by `yarc verify`. Do not bundle copyrighted DAT dumps.
+- Optional `dats:` list of user-supplied Logiqx XML or ClrMamePro text DAT paths (relative to the YAML file, or absolute). Used by `yarc verify`. Do not bundle copyrighted DAT dumps or provide download links.
 - Scan caches (hashes, sizes, mtimes) may use SQLite or another derived store. Paths for cache/logs belong in YAML.
 
 ## i18n
@@ -63,12 +63,16 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 
 **DAT matching**
 
-- User-supplied Logiqx XML. Do not bundle copyrighted DAT dumps.
+- User-supplied No-Intro-family and TOSEC-family DATs in Logiqx XML or ClrMamePro text format. Detect the format from the content. Do not bundle DAT dumps, provide download links, or add downloaders.
+- Read Logiqx header name, description, version, homepage, and URL. `yarc verify` prints the header name and version when present.
+- Support both `game` and `machine` records. Use their description as the display title when present.
+- Treat TOSEC-style names containing `()` and `[]` as opaque names; do not parse their tokens.
 - A collection file matches a DAT ROM only if **every hash listed on that ROM** agrees with the scan (CRC32, MD5, and SHA1, whichever the DAT provides). Size, if present in the DAT, must also agree. One matching algorithm is not enough when the DAT lists several.
 - ROM names use an exact, case-sensitive comparison against `ScanEntry.entry_name`; no case folding or fuzzy matching is performed.
 - Hash identity takes precedence over name identity. After a file hash-matches a DAT ROM, its name is compared only with that ROM's name.
 - File statuses are `Have` (hash and name match), `WrongName` (hash matches but the name does not, including case-only differences), `WrongDump` (name matches but hashes or size do not), `Duplicate` (a later hash hit for a DAT ROM already filled by the first hit in scan order), and `Extra` (neither identity matches).
 - Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it and `Missing` otherwise. `WrongDump` does not fill a DAT ROM.
+- A ROM marked `nodump` is not missing and cannot be filled. A ROM marked `baddump` still matches normally by all listed hashes and optional size, and reports visibly identify it as a bad dump.
 
 ## Organize (later, destructive)
 

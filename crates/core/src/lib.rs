@@ -7,7 +7,8 @@ mod scan;
 
 pub use cache::ScanCache;
 pub use dat::{
-    DatFile, DatRomMatch, DatRomStatus, FileMatch, FileStatus, MatchReport, match_collection,
+    DatFile, DatHeader, DatRom, DatRomMatch, DatRomStatus, DumpStatus, FileMatch, FileStatus,
+    MatchReport, match_collection,
 };
 pub use hash::{Hashes, hash_reader};
 pub use scan::{EntryKind, ScanEntry, ScanMode, ScanReport, Scanner};

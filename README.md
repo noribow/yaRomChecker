@@ -36,14 +36,16 @@ yarc quick C:\path\to\collection
 yarc verify C:\path\to\collection
 ```
 
-`verify` performs a quick scan, then matches hashes against Logiqx DAT files listed under `dats:` in the YAML config. Every hash the DAT lists for a ROM (CRC32, MD5, SHA1) must match; one algorithm is not enough when several are present. Collection files not in the DAT are extra; DAT ROMs not on disk are missing.
+`verify` performs a quick scan, then matches hashes against user-supplied No-Intro-family and TOSEC-family DAT files listed under `dats:` in the YAML config. Logiqx XML and ClrMamePro text DATs are detected by content. Every hash the DAT lists for a ROM (CRC32, MD5, SHA1) must match; one algorithm is not enough when several are present. Names, including long TOSEC-style names, are compared exactly and case-sensitively.
+
+DAT files are not bundled or downloaded by yaRomChecker, and this project does not provide DAT download links. Supply DATs you are authorized to use. A `nodump` entry is informational rather than missing and cannot be filled; a matching `baddump` entry is clearly marked in the report. The verifier also prints each DAT's header name and version when available.
 
 `scan` and `full` stream every loose file and every ZIP/7z entry through CRC32, MD5, and SHA1 hashers. `quick` reuses cached hashes when the container path, file name, size, and modification time all match.
 
 ## Planned
 
 - GUI (`yaRomChecker`) sharing the same core as `yarc`
-- DAT matching (No-Intro, Redump, TOSEC, MAME, and custom DATs, added in stages)
+- Additional DAT families beyond the current No-Intro/TOSEC formats
 - Organize (rename / quarantine), after a dry-run preview
 - External archive media checks (read-only; no writing to those media)
 
