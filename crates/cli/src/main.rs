@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
 use yaromchecker_core::{
-    DatFile, DatRomStatus, FileStatus, ScanCache, ScanMode, Scanner, match_collection,
+    DatFile, DatRomStatus, DumpStatus, FileStatus, ScanCache, ScanMode, Scanner, match_collection,
 };
 
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -301,13 +301,32 @@ fn print_dat_report(
     let mut dats = Vec::new();
     for dat in &config.dats {
         let path = resolve_path(config_path, dat.clone());
-        dats.push(DatFile::load(&path).with_context(|| {
+        let loaded = DatFile::load(&path).with_context(|| {
             messages.format(
                 "dat_read_error",
                 "Cannot read DAT {path}",
                 &[("path", path.display().to_string())],
             )
-        })?);
+        })?;
+        println!(
+            "{}",
+            messages.format(
+                "dat_header_line",
+                "DAT: {name} {version}",
+                &[
+                    (
+                        "name",
+                        loaded
+                            .header
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| path.display().to_string()),
+                    ),
+                    ("version", loaded.header.version.clone().unwrap_or_default()),
+                ],
+            )
+        );
+        dats.push(loaded);
     }
     let report = match_collection(entries, &dats);
     let present = report
@@ -315,31 +334,38 @@ fn print_dat_report(
         .iter()
         .filter(|rom| rom.status == DatRomStatus::Present)
         .count();
-    let missing = report.roms.len() - present;
+    let missing = report
+        .roms
+        .iter()
+        .filter(|rom| rom.status == DatRomStatus::Missing)
+        .count();
+    let nodump = report
+        .roms
+        .iter()
+        .filter(|rom| rom.status == DatRomStatus::NoDump)
+        .count();
     println!(
         "{}",
         messages.format(
             "dat_summary",
-            "DAT verification: {files} files, {present} present, {missing} missing.",
+            "DAT verification: {files} files, {present} present, {missing} missing, {nodump} nodump.",
             &[
                 ("files", report.files.len().to_string()),
                 ("present", present.to_string()),
                 ("missing", missing.to_string()),
+                ("nodump", nodump.to_string()),
             ],
         )
     );
     for entry in &report.files {
-        let status = file_status_text(messages, entry.status);
+        let status = marked_file_status(messages, entry.status, entry.dump_status);
         if entry.status == FileStatus::Extra {
             println!(
                 "{}",
                 messages.format(
                     "dat_extra_line",
                     "{status}  {path}",
-                    &[
-                        ("status", status.to_owned()),
-                        ("path", entry.entry_path.clone()),
-                    ],
+                    &[("status", status), ("path", entry.entry_path.clone()),],
                 )
             );
             continue;
@@ -350,7 +376,7 @@ fn print_dat_report(
                 "dat_file_line",
                 "{status}  {path}  {game}/{name}",
                 &[
-                    ("status", status.to_owned()),
+                    ("status", status),
                     ("path", entry.entry_path.clone()),
                     ("game", entry.game.clone().unwrap_or_default()),
                     ("name", entry.dat_name.clone().unwrap_or_default()),
@@ -372,7 +398,38 @@ fn print_dat_report(
             )
         );
     }
+    for rom in report
+        .roms
+        .iter()
+        .filter(|rom| rom.status == DatRomStatus::NoDump)
+    {
+        println!(
+            "{}",
+            messages.format(
+                "dat_nodump_line",
+                "nodump  {game}/{name}",
+                &[("game", rom.game.clone()), ("name", rom.name.clone())],
+            )
+        );
+    }
     Ok(())
+}
+
+fn marked_file_status(
+    messages: &Messages,
+    status: FileStatus,
+    dump_status: Option<DumpStatus>,
+) -> String {
+    let status = file_status_text(messages, status);
+    if dump_status == Some(DumpStatus::BadDump) {
+        messages.format(
+            "status_baddump",
+            "{status} (baddump)",
+            &[("status", status.to_owned())],
+        )
+    } else {
+        status.to_owned()
+    }
 }
 
 fn file_status_text(messages: &Messages, status: FileStatus) -> &str {
@@ -463,5 +520,9 @@ mod tests {
             "Duplicate"
         );
         assert_eq!(file_status_text(&messages, FileStatus::Extra), "Extra");
+        assert_eq!(
+            marked_file_status(&messages, FileStatus::Have, Some(DumpStatus::BadDump)),
+            "Have (baddump)"
+        );
     }
 }
