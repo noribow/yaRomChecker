@@ -98,6 +98,44 @@ impl ScanCache {
         Ok(entries)
     }
 
+    /// Returns cached rows whose container is inside the collection.
+    ///
+    /// This reads cache state only; it never visits or hashes collection files.
+    pub fn entries_for_collection(&self, collection: &Path) -> Result<Vec<ScanEntry>> {
+        let mut statement = self.connection.prepare(
+            "SELECT container_path, container_name, container_size, container_mtime_ns,
+                    entry_path, entry_name, entry_size, entry_kind, crc32, md5, sha1,
+                    last_hashed_ns
+             FROM scan_entries ORDER BY container_path, entry_path",
+        )?;
+        let entries = statement
+            .query_map([], |row| {
+                let kind: String = row.get(7)?;
+                Ok(ScanEntry {
+                    container_path: row.get(0)?,
+                    container_name: row.get(1)?,
+                    container_size: row.get::<_, i64>(2)? as u64,
+                    container_mtime_ns: row.get(3)?,
+                    entry_path: row.get(4)?,
+                    entry_name: row.get(5)?,
+                    entry_size: row.get::<_, i64>(6)? as u64,
+                    kind: EntryKind::from_db(&kind),
+                    hashes: Hashes {
+                        crc32: row.get(8)?,
+                        md5: row.get(9)?,
+                        sha1: row.get(10)?,
+                    },
+                    last_hashed_ns: row.get(11)?,
+                    reused: true,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(entries
+            .into_iter()
+            .filter(|entry| Path::new(&entry.container_path).starts_with(collection))
+            .collect())
+    }
+
     pub(crate) fn replace(&mut self, path: &str, entries: &[ScanEntry]) -> Result<()> {
         let transaction = self.connection.transaction()?;
         transaction.execute("DELETE FROM scan_entries WHERE container_path=?1", [path])?;
@@ -161,5 +199,43 @@ mod tests {
             .collect::<std::result::Result<_, _>>()
             .unwrap();
         assert!(columns.iter().any(|column| column == "last_hashed_ns"));
+    }
+
+    #[test]
+    fn collection_query_uses_path_boundaries() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut cache = ScanCache::open(&temp.path().join("cache.sqlite3")).unwrap();
+        let collection = temp.path().join("roms");
+        let inside = collection.join("game.bin");
+        let sibling = temp.path().join("roms-extra").join("other.bin");
+        for path in [&inside, &sibling] {
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            cache
+                .replace(
+                    &path.to_string_lossy(),
+                    &[ScanEntry {
+                        container_path: path.to_string_lossy().into_owned(),
+                        container_name: name.clone(),
+                        container_size: 1,
+                        container_mtime_ns: 2,
+                        entry_path: name.clone(),
+                        entry_name: name,
+                        entry_size: 1,
+                        kind: EntryKind::File,
+                        hashes: Hashes {
+                            crc32: "00".into(),
+                            md5: "00".into(),
+                            sha1: "00".into(),
+                        },
+                        last_hashed_ns: 3,
+                        reused: false,
+                    }],
+                )
+                .unwrap();
+        }
+
+        let entries = cache.entries_for_collection(&collection).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].container_path, inside.to_string_lossy());
     }
 }

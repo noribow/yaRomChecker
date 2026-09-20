@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, hash_map::Entry},
+    collections::{BTreeSet, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver},
@@ -15,7 +15,7 @@ use yaromchecker_core::{
     DatFile, DatRomStatus, EntryKind, MatchReport, ScanCache, ScanEntry, ScanMode, ScanReport,
     Scanner, SetStatus, match_collection,
 };
-use yaromchecker_gui::should_show_member_pane;
+use yaromchecker_gui::{set_count_text, should_show_member_pane};
 
 const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -289,14 +289,14 @@ impl App {
             return;
         };
         let cache_path = resolve_path(&self.config_path, &self.config.cache_path);
-        let mut scanner = match ScanCache::open(&cache_path).map(Scanner::new) {
-            Ok(scanner) => scanner,
+        let cache = match ScanCache::open(&cache_path) {
+            Ok(cache) => cache,
             Err(error) => {
                 self.notice = Some(error.to_string());
                 return;
             }
         };
-        let mut scans: HashMap<PathBuf, ScanReport> = HashMap::new();
+        let mut cached_collections: HashMap<PathBuf, Vec<ScanEntry>> = HashMap::new();
         let mut total = DatSummary::default();
         for index in indexes {
             let source = &self.config.sources[index];
@@ -308,10 +308,10 @@ impl App {
                     continue;
                 }
             };
-            if let Entry::Vacant(slot) = scans.entry(canonical.clone()) {
-                match scanner.scan(&canonical, ScanMode::Quick) {
-                    Ok(scan) => {
-                        slot.insert(scan);
+            if !cached_collections.contains_key(&canonical) {
+                match cache.entries_for_collection(&canonical) {
+                    Ok(entries) => {
+                        cached_collections.insert(canonical.clone(), entries);
                     }
                     Err(error) => {
                         self.notice = Some(error.to_string());
@@ -322,12 +322,14 @@ impl App {
             let Ok(dat) = &self.dats[index] else {
                 continue;
             };
-            let entries: Vec<_> = scans[&canonical]
-                .entries
-                .iter()
-                .filter(|entry| Path::new(&entry.container_path).starts_with(&canonical))
-                .cloned()
-                .collect();
+            let entries = cached_collections[&canonical].clone();
+            if entries.is_empty() {
+                self.notice = Some(format!(
+                    "No cached scan entries were found for {}. Scan this collection first.",
+                    collection.display()
+                ));
+                continue;
+            }
             let report = match_collection(&entries, dat);
             total.files += report.files.len();
             total.present += report
@@ -441,7 +443,7 @@ impl App {
         });
     }
 
-    fn set_rows(&self) -> Vec<(String, Option<SetStatus>, usize, usize, usize, usize)> {
+    fn set_rows(&self) -> Vec<(String, Option<SetStatus>, String, String, String, String)> {
         let Some(index) = self.selected_source else {
             return Vec::new();
         };
@@ -481,9 +483,23 @@ impl App {
                     let missing = count(DatRomStatus::Missing);
                     let missing_in_archive = count(DatRomStatus::MissingInArchive);
                     let nodump = count(DatRomStatus::NoDump);
-                    (game, status, present, missing, missing_in_archive, nodump)
+                    (
+                        game,
+                        status,
+                        set_count_text(true, present),
+                        set_count_text(true, missing),
+                        set_count_text(true, missing_in_archive),
+                        set_count_text(true, nodump),
+                    )
                 } else {
-                    (game, None, 0, 0, 0, 0)
+                    (
+                        game,
+                        None,
+                        set_count_text(false, 0),
+                        set_count_text(false, 0),
+                        set_count_text(false, 0),
+                        set_count_text(false, 0),
+                    )
                 }
             })
             .collect()
@@ -537,7 +553,7 @@ impl App {
                         });
                         for value in [present, missing, missing_archive, nodump] {
                             row.col(|ui| {
-                                ui.label(value.to_string());
+                                ui.label(value);
                             });
                         }
                     });
@@ -598,7 +614,7 @@ impl App {
                         for value in [
                             entry.entry_name.clone(),
                             entry.entry_size.to_string(),
-                            entry.container_mtime_ns.to_string(),
+                            format_timestamp(entry.container_mtime_ns),
                             entry.hashes.crc32.clone(),
                             entry.hashes.md5.clone(),
                             entry.hashes.sha1.clone(),
@@ -650,14 +666,19 @@ impl App {
                 ui.selectable_value(&mut self.settings.locale, "en".to_owned(), "en");
                 ui.selectable_value(&mut self.settings.locale, "ja".to_owned(), "ja");
             });
-        path_row(ui, "Cache path", &mut self.settings.cache_path);
+        path_row(
+            ui,
+            "Cache path",
+            &mut self.settings.cache_path,
+            PathPicker::SaveFile,
+        );
         ui.separator();
         ui.heading("DAT and collection sources");
         let mut remove = None;
         for (index, source) in self.settings.sources.iter_mut().enumerate() {
             ui.group(|ui| {
-                path_row(ui, "DAT", &mut source.dat);
-                path_row(ui, "Collection", &mut source.collection);
+                path_row(ui, "DAT", &mut source.dat, PathPicker::File);
+                path_row(ui, "Collection", &mut source.collection, PathPicker::Folder);
                 if ui.button("Remove").clicked() {
                     remove = Some(index);
                 }
@@ -749,46 +770,47 @@ impl App {
         if !self.scan_popup {
             return;
         }
-        let mut open = self.scan_popup;
-        egui::Window::new("Scan")
-            .collapsible(false)
-            .resizable(true)
-            .open(&mut open)
-            .show(ctx, |ui| {
-                ui.label("Sources: unique collections from YAML");
-                ui.radio_value(
-                    &mut self.scan_choice,
-                    ScanChoice::Initial,
-                    "Initial/full scan",
-                );
-                ui.radio_value(&mut self.scan_choice, ScanChoice::Quick, "Quick rescan");
-                ui.radio_value(&mut self.scan_choice, ScanChoice::Full, "Full rescan");
-                if ui
-                    .add_enabled(!self.scan_running, egui::Button::new("Start"))
-                    .clicked()
-                {
-                    self.start_scan();
+        egui::Modal::new(egui::Id::new("scan_modal")).show(ctx, |ui| {
+            ui.heading("Scan");
+            ui.label("Sources: unique collections from YAML");
+            ui.radio_value(
+                &mut self.scan_choice,
+                ScanChoice::Initial,
+                "Initial/full scan",
+            );
+            ui.radio_value(&mut self.scan_choice, ScanChoice::Quick, "Quick rescan");
+            ui.radio_value(&mut self.scan_choice, ScanChoice::Full, "Full rescan");
+            if ui
+                .add_enabled(!self.scan_running, egui::Button::new("Start"))
+                .clicked()
+            {
+                self.start_scan();
+            }
+            if self.scan_running {
+                ui.spinner();
+            }
+            ui.label(format!(
+                "Current container: {}",
+                self.current_container
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "None".into())
+            ));
+            if let Some(summary) = &self.scan_summary {
+                ui.label(summary.line());
+                for error in &summary.errors {
+                    ui.colored_label(ui.visuals().error_fg_color, error);
                 }
-                if self.scan_running {
-                    ui.spinner();
-                }
-                ui.label(format!(
-                    "Current container: {}",
-                    self.current_container
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "None".into())
-                ));
-                if let Some(summary) = &self.scan_summary {
-                    ui.label(summary.line());
-                    for error in &summary.errors {
-                        ui.colored_label(ui.visuals().error_fg_color, error);
-                    }
-                } else {
-                    ui.label("Choose a scan mode. Start hashes configured source collections.");
-                }
-            });
-        self.scan_popup = open;
+            } else {
+                ui.label("Choose a scan mode. Start hashes configured source collections.");
+            }
+            if ui
+                .add_enabled(!self.scan_running, egui::Button::new("Close"))
+                .clicked()
+            {
+                self.scan_popup = false;
+            }
+        });
     }
 }
 
@@ -819,16 +841,31 @@ impl eframe::App for App {
     }
 }
 
-fn path_row(ui: &mut egui::Ui, label: &str, path: &mut PathBuf) {
+#[derive(Clone, Copy)]
+enum PathPicker {
+    File,
+    Folder,
+    SaveFile,
+}
+
+fn path_row(ui: &mut egui::Ui, label: &str, path: &mut PathBuf, picker: PathPicker) {
     ui.horizontal(|ui| {
         ui.label(label);
         let mut value = path.display().to_string();
         if ui.text_edit_singleline(&mut value).changed() {
             *path = value.into();
         }
-        let _ = ui
-            .button("Browse...")
-            .on_hover_text("Enter a path in the field in this version.");
+        if ui.button("Browse...").clicked() {
+            let dialog = rfd::FileDialog::new();
+            let selected = match picker {
+                PathPicker::File => dialog.pick_file(),
+                PathPicker::Folder => dialog.pick_folder(),
+                PathPicker::SaveFile => dialog.save_file(),
+            };
+            if let Some(selected) = selected {
+                *path = selected;
+            }
+        }
     });
 }
 
