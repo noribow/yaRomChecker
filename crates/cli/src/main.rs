@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, hash_map::Entry},
     fs,
     path::{Path, PathBuf},
 };
@@ -30,17 +30,24 @@ enum Command {
     Scan { path: PathBuf },
     Quick { path: PathBuf },
     Full { path: PathBuf },
-    Verify { path: PathBuf },
+    Verify,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
     #[serde(default = "default_locale")]
     locale: String,
     cache_path: PathBuf,
     #[serde(default)]
-    dats: Vec<PathBuf>,
+    sources: Vec<Source>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Source {
+    dat: PathBuf,
+    collection: PathBuf,
 }
 
 struct Messages {
@@ -195,7 +202,7 @@ fn parse_cli(messages: &Messages) -> Cli {
                 messages
                     .text(
                         "verify_help",
-                        "Scan a collection and match it against configured DAT files",
+                        "Scan and verify the configured DAT and collection pairs",
                     )
                     .to_owned(),
             )
@@ -225,11 +232,6 @@ fn run() -> Result<()> {
         );
     }
     let cache_path = resolve_path(&config_path, config.cache_path.clone());
-    let (path, mode, verify) = match cli.command {
-        Command::Scan { path } | Command::Full { path } => (path, ScanMode::Full, false),
-        Command::Quick { path } => (path, ScanMode::Quick, false),
-        Command::Verify { path } => (path, ScanMode::Quick, true),
-    };
     let mut scanner = Scanner::new(ScanCache::open(&cache_path).with_context(|| {
         messages.format(
             "cache_open_error",
@@ -237,7 +239,25 @@ fn run() -> Result<()> {
             &[("path", cache_path.display().to_string())],
         )
     })?);
-    let report = scanner.scan(&path, mode).with_context(|| {
+    match cli.command {
+        Command::Scan { path } | Command::Full { path } => {
+            scan_and_print(&mut scanner, &path, ScanMode::Full, &messages)?;
+        }
+        Command::Quick { path } => {
+            scan_and_print(&mut scanner, &path, ScanMode::Quick, &messages)?;
+        }
+        Command::Verify => verify_sources(&config, &config_path, &mut scanner, &messages)?,
+    }
+    Ok(())
+}
+
+fn scan_and_print(
+    scanner: &mut Scanner,
+    path: &Path,
+    mode: ScanMode,
+    messages: &Messages,
+) -> Result<yaromchecker_core::ScanReport> {
+    let report = scanner.scan(path, mode).with_context(|| {
         messages.format(
             "scan_error",
             "Cannot scan {path}",
@@ -270,10 +290,7 @@ fn run() -> Result<()> {
             )
         );
     }
-    if verify {
-        print_dat_report(&config, &config_path, &report.entries, &messages)?;
-    }
-    Ok(())
+    Ok(report)
 }
 
 fn resolve_path(base: &Path, path: PathBuf) -> PathBuf {
@@ -284,29 +301,45 @@ fn resolve_path(base: &Path, path: PathBuf) -> PathBuf {
     }
 }
 
-fn print_dat_report(
+fn verify_sources(
     config: &Config,
     config_path: &Path,
-    entries: &[yaromchecker_core::ScanEntry],
+    scanner: &mut Scanner,
     messages: &Messages,
 ) -> Result<()> {
-    if config.dats.is_empty() {
+    if config.sources.is_empty() {
         anyhow::bail!(
             "{}",
             messages.text(
                 "dat_missing_config",
-                "No DAT files configured. Add paths under dats: in the YAML config."
+                "No DAT collection sources configured. Add DAT and collection pairs under sources: in the YAML config."
             )
         );
     }
-    let mut dats = Vec::new();
-    for dat in &config.dats {
-        let path = resolve_path(config_path, dat.clone());
-        let loaded = DatFile::load(&path).with_context(|| {
+    let mut scans = HashMap::new();
+    for source in &config.sources {
+        let collection = resolve_path(config_path, source.collection.clone())
+            .canonicalize()
+            .with_context(|| {
+                format!("Cannot resolve collection {}", source.collection.display())
+            })?;
+        if let Entry::Vacant(slot) = scans.entry(collection.clone()) {
+            slot.insert(scan_and_print(
+                scanner,
+                &collection,
+                ScanMode::Quick,
+                messages,
+            )?);
+        }
+    }
+    for source in &config.sources {
+        let dat_path = resolve_path(config_path, source.dat.clone());
+        let collection = resolve_path(config_path, source.collection.clone()).canonicalize()?;
+        let loaded = DatFile::load(&dat_path).with_context(|| {
             messages.format(
                 "dat_read_error",
                 "Cannot read DAT {path}",
-                &[("path", path.display().to_string())],
+                &[("path", dat_path.display().to_string())],
             )
         })?;
         println!(
@@ -321,15 +354,31 @@ fn print_dat_report(
                             .header
                             .name
                             .clone()
-                            .unwrap_or_else(|| path.display().to_string()),
+                            .unwrap_or_else(|| dat_path.display().to_string()),
                     ),
                     ("version", loaded.header.version.clone().unwrap_or_default()),
                 ],
             )
         );
-        dats.push(loaded);
+        let entries = entries_in_collection(&scans[&collection].entries, &collection);
+        let report = match_collection(&entries, &loaded);
+        print_dat_report(&report, messages);
     }
-    let report = match_collection(entries, &dats);
+    Ok(())
+}
+
+fn entries_in_collection(
+    entries: &[yaromchecker_core::ScanEntry],
+    canonical_collection: &Path,
+) -> Vec<yaromchecker_core::ScanEntry> {
+    entries
+        .iter()
+        .filter(|entry| Path::new(&entry.container_path).starts_with(canonical_collection))
+        .cloned()
+        .collect()
+}
+
+fn print_dat_report(report: &yaromchecker_core::MatchReport, messages: &Messages) {
     let present = report
         .roms
         .iter()
@@ -446,7 +495,6 @@ fn print_dat_report(
             )
         );
     }
-    Ok(())
 }
 
 fn set_status_text(messages: &Messages, status: SetStatus) -> &str {
@@ -495,6 +543,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use yaromchecker_core::{EntryKind, Hashes, ScanEntry};
 
     #[test]
     fn default_config_is_beside_executable() {
@@ -502,6 +551,15 @@ mod tests {
         let path = default_config_path(&messages).unwrap();
         assert_eq!(path.file_name().unwrap(), "yaRomChecker.yaml");
         assert_eq!(path.parent(), std::env::current_exe().unwrap().parent());
+    }
+
+    #[test]
+    fn verify_uses_configured_sources_without_a_path_argument() {
+        assert!(matches!(
+            Cli::try_parse_from(["yarc", "verify"]).unwrap().command,
+            Command::Verify
+        ));
+        assert!(Cli::try_parse_from(["yarc", "verify", "collection"]).is_err());
     }
 
     #[test]
@@ -543,6 +601,68 @@ mod tests {
         assert!(!ensure_config(&path, &messages).unwrap());
         let kept = fs::read_to_string(&path).unwrap();
         assert!(kept.contains("keep-me.sqlite3"));
+    }
+
+    #[test]
+    fn parses_ordered_sources_and_rejects_legacy_dats() {
+        let config: Config = serde_yml::from_str(
+            "locale: en\ncache_path: cache.sqlite3\nsources:\n  - dat: a.dat\n    collection: a\n  - dat: b.dat\n    collection: b\n",
+        )
+        .unwrap();
+        assert_eq!(config.sources.len(), 2);
+        assert_eq!(config.sources[0].dat, PathBuf::from("a.dat"));
+        assert_eq!(config.sources[0].collection, PathBuf::from("a"));
+
+        let error = serde_yml::from_str::<Config>(
+            "locale: en\ncache_path: cache.sqlite3\ndats:\n  - old.dat\n",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unknown field `dats`"));
+    }
+
+    #[test]
+    fn empty_sources_are_valid_config_but_invalid_for_verify() {
+        let config: Config =
+            serde_yml::from_str("locale: en\ncache_path: cache.sqlite3\nsources: []\n").unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("yaRomChecker.yaml");
+        let cache = ScanCache::open(&temp.path().join("cache.sqlite3")).unwrap();
+        let error = verify_sources(
+            &config,
+            &config_path,
+            &mut Scanner::new(cache),
+            &Messages::load("en").unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("No DAT collection sources"));
+    }
+
+    #[test]
+    fn collection_membership_uses_container_path_boundaries() {
+        let root = PathBuf::from("collections").join("nes");
+        let make_entry = |container_path: PathBuf| ScanEntry {
+            container_path: container_path.to_string_lossy().into_owned(),
+            container_name: "game.rom".into(),
+            container_size: 3,
+            container_mtime_ns: 0,
+            entry_path: "game.rom".into(),
+            entry_name: "game.rom".into(),
+            entry_size: 3,
+            kind: EntryKind::File,
+            hashes: Hashes {
+                crc32: String::new(),
+                md5: String::new(),
+                sha1: String::new(),
+            },
+            reused: false,
+        };
+        let inside = root.join("game.rom");
+        let sibling = root.parent().unwrap().join("nes-extra").join("game.rom");
+        let entries = vec![make_entry(inside.clone()), make_entry(sibling)];
+
+        let selected = entries_in_collection(&entries, &root);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].container_path, inside.to_string_lossy());
     }
 
     #[test]

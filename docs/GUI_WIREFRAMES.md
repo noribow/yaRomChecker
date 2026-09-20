@@ -23,8 +23,8 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 +------------------------------------------------------------------------------------------------+
 | File   Scan   Settings   Report   Organize (disabled)                                          |
 +----------------------------------+-------------------------------------------------------------+
-| Configured DATs                  | Sets                                                        |
-| v No-Intro Example               | (columns TBD / later)                                       |
+| Sources (DAT + collection)       | Sets                                                        |
+| v No-Intro Example  C:\ROMs\NES  | (columns TBD / later)                                       |
 |     [header / groups as tree]    | Example Game                                                |
 | v TOSEC Example                  | Example Game 2                                              |
 |     ...                          |                                                             |
@@ -36,7 +36,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 | No write to CD/DVD/BD, USB, or   | disk.bin                                                    |
 | LTFS LTO.                        | Select an archive set to list inner files.                  |
 +----------------------------------+-------------------------------------------------------------+
-| Root: C:\ROMs | Last scan: entries 2,013 / hashed 31 / reused 1,209 | Locale: en              |
+| Collection: C:\ROMs\NES | Last scan: entries 2,013 / hashed 31 / reused 1,209 | Locale: en    |
 | Config: C:\...\yaRomChecker.yaml (read-only)                                                   |
 +------------------------------------------------------------------------------------------------+
 ```
@@ -52,7 +52,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 
 ### Top-left: configured DATs (tree)
 
-- Tree of recognized / configured DATs (paths from YAML `dats`, same as Settings). This is not a collection-folder tree and is not issue #18 `sources` YAML.
+- Tree of recognized / configured sources from YAML `sources` (same as Settings): each node is a DAT plus its collection directory. This is not a collection-folder tree.
 - Nodes may group header name (and later subgroups if a DAT supplies them); exact grouping below the DAT is not required for this wireframe slice.
 - Selecting a DAT fills the top-right set list.
 - Empty state: localized CLI `dat_missing_config` in this pane, with a way to open Settings. No DAT downloaders or bundled DAT files.
@@ -81,7 +81,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 
 ### Status bar (unchanged role)
 
-- Collection root (or `No collection selected`), last scan entry / hashed-container / reused-container counts (or `No scan yet`), selected locale.
+- Selected source collection (or `No source selected`), last scan entry / hashed-container / reused-container counts (or `No scan yet`), selected locale.
 - Resolved YAML configuration path: always visible, selectable, read-only.
 - Current activity may also appear while work runs. Long values may be truncated if the complete value is in a tooltip or selectable text.
 - No ROM or DAT downloader.
@@ -101,7 +101,7 @@ Scan does **not** replace the four panes. The explorer stays visible behind a mo
 | ...                              | ...                                                         |
 +----------------------------------+-------------------------------------------------------------+
 |                    +---------------- Scan -----------------------+                             |
-|                    | Collection root: [C:\ROMs________] [Browse] |                             |
+|                    | Sources: unique collections from YAML       |                             |
 |                    | Mode: (o) Initial/full  ( ) Quick  ( ) Full |                             |
 |                    | [Start]                                     |                             |
 |                    | Progress: [##########----------]            |                             |
@@ -114,7 +114,7 @@ Scan does **not** replace the four panes. The explorer stays visible behind a mo
 +------------------------------------------------------------------------------------------------+
 ```
 
-- Collection-root field and Browse (needed to run a scan; not a separate Main explorer).
+- Default Start hashes every unique `sources` collection into the shared cache (same as `yarc verify`'s scan step). An extra folder field with Browse is optional and writes into that same cache.
 - Three mutually exclusive modes: Initial/full scan, Quick rescan, and Full rescan.
   - Initial/full and Full re-hash every loose-file container and ZIP/7z container, streaming inner entries into the hashers.
   - Quick reuses hashes only when container path, file name, size, and modification time match; otherwise it re-hashes the container.
@@ -122,23 +122,23 @@ Scan does **not** replace the four panes. The explorer stays visible behind a mo
 - While scanning, progress (current container, hashed-container count, reused-container count, entry count) stays in this popup. Archives are never extracted to disk.
 - Completion uses the same count meanings and wording as the CLI scan summary.
 - An error list identifies affected paths and messages without discarding successful results.
-- Empty state before Start: `Choose a collection root and scan mode.`
+- Empty state before Start: `Choose a scan mode. Start hashes configured source collections.`
 - Closing the popup after completion returns to the four-pane window; it does not open a Scan full page.
 - Omitted, later: RAR, standalone `.zst`, header stripping, archive extraction controls, and required cancellation.
 
 ## Settings (from menu)
 
-Unchanged in purpose from issue #12. Opened from the menu, not from a primary nav tab.
+Unchanged in purpose from issue #12. Opened from the menu, not from a primary nav tab. The list is YAML `sources` (DAT + collection), not a bare `dats:` path list.
 
 ```text
 +-- Settings ------------------------------------------------------------------------------------+
 | Configuration file (read-only): C:\...\yaRomChecker.yaml                                      |
 | Locale: [en v]    choices: en, ja                                                            |
 | Cache path: [cache.sqlite____________________________________________________] [Browse...]     |
-| DAT files                                                                                     |
-| C:\DATs\No-Intro.dat                                                          [Remove]        |
-| C:\DATs\TOSEC.dat                                                             [Remove]        |
-| [Add...] [Browse...]                                                                            |
+| DAT and collection sources                                                                    |
+| DAT: [C:\DATs\No-Intro.dat____] [Browse] Collection: [C:\ROMs\NES____] [Browse] [Remove]   |
+| DAT: [C:\DATs\TOSEC.dat_______] [Browse] Collection: [C:\ROMs\TOSEC__] [Browse] [Remove]   |
+| [Add source]                                                                                  |
 | [Save]                                                                                        |
 +------------------------------------------------------------------------------------------------+
 ```
@@ -146,7 +146,7 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 - Read-only resolved configuration-file path.
 - Locale selector with `en` and `ja`; English is the default.
 - Editable `cache_path` with Browse.
-- Ordered `dats` list with Add, Remove, and Browse. Paths may be absolute or YAML-relative. This list is the source of the primary-window DAT tree.
+- Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative. This list is the source of the primary-window DAT tree.
 - Save writes settings to YAML only; scan records and hashes remain in the cache.
 - If YAML is missing, Save creates it with the currently displayed settings (including defaults). If it exists, loading preserves its values and Save updates that same file only in response to the explicit Save action; automatic create-if-missing behavior never overwrites existing YAML.
 - Missing DAT paths and invalid or unwritable settings appear inline; missing DATs are warnings so other valid settings can still be saved.
