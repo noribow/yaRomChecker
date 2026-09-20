@@ -72,6 +72,7 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - Hash identity takes precedence over name identity. After a file hash-matches a DAT ROM, its name is compared only with that ROM's name.
 - File statuses are `Have` (hash and name match), `WrongName` (hash matches but the name does not, including case-only differences), `WrongDump` (name matches but hashes or size do not), `Duplicate` (a later hash hit for a DAT ROM already filled by the first hit in scan order), and `Extra` (neither identity matches).
 - Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it and `Missing` otherwise. `WrongDump` does not fill a DAT ROM.
+- Unreadable archives remain scan errors and do not produce a DAT ROM status.
 - A ROM marked `nodump` is not missing and cannot be filled. A ROM marked `baddump` still matches normally by all listed hashes and optional size, and reports visibly identify it as a bad dump.
 
 **Dump definitions with a different data model**
@@ -108,9 +109,53 @@ In scope later: media health; copy **from** media into the working collection to
 ## GUI
 
 - Design: Markdown/chat wireframes first, then egui. No Figma.
-- Explorer-like layout is enough (tree + table). Native Win32 look is not required.
-- Table: `egui_extras::TableBuilder`. Tree: `egui_ltreeview`.
-- Candidate screens: Main, Scan (initial/quick/full), DAT, Organize preview, Settings (writes YAML), Report, External media (later).
+- See [GUI wireframes](GUI_WIREFRAMES.md) for Main, Scan, DAT / Verify, Settings, Report, and shared application chrome.
+- Native Win32 styling is not required. The GUI is a separate `yaRomChecker` binary; do not combine it with `yarc`.
+
+**Shared chrome**
+
+- Navigation contains Main, Scan, DAT / Verify, Settings, and Report.
+- Organize and External media appear only as disabled navigation placeholders for later work.
+- A persistent status bar shows the collection root, the last scan summary (entry, hashed-container, and reused-container counts), the selected locale, and the resolved configuration path. The configuration path is read-only.
+
+**Main**
+
+- Main is the collection explorer, not a dashboard-only screen. When no collection is selected, it shows an explicit empty state.
+- It has an editable collection-root field, Browse, and Scan, Quick, Full, and Verify actions.
+- Its explorer layout places an `egui_ltreeview` folder tree beside an `egui_extras::TableBuilder` file table. The tree contains directories and ZIP/7z containers.
+- File-table columns are name (`entry_name`), path (`entry_path`), kind (`loose file`, `ZIP entry`, or `7z entry`), size, CRC32, MD5, SHA1, cache reused (`yes`/`no`), and DAT file status after verification (`Have`, `WrongName`, `WrongDump`, `Duplicate`, `Extra`, or empty).
+- Selecting a row shows its container path, container size, container modification time, and CRC32, MD5, and SHA1 hashes.
+- A recent-activity dashboard and organize controls are omitted until later.
+
+**Scan**
+
+- Scan has a collection-root field, Browse, three modes (initial/full scan, quick rescan, and full rescan), and Start.
+- Progress shows the current container path, hashed-container count, reused-container count, and entry count.
+- Completion shows a result line with the same count meanings as the CLI scan summary and an error list with affected paths and messages.
+- Cancel is not required. If added, it is optional rather than an acceptance requirement.
+
+**DAT / Verify**
+
+- The configured-DAT list is read-only and shows each DAT's header name, version, and path.
+- Verify performs a quick scan and then DAT matching.
+- The summary shows collection files, present DAT ROMs, missing DAT ROMs, and `nodump` DAT ROMs.
+- The collection-file table has status, path, game display title, DAT ROM name, and `baddump` columns, with Have, WrongName, WrongDump, Duplicate, and Extra filters.
+- A second, separate DAT-ROM table has state (`Present`, `Missing`, or `nodump`), game display title, name, and `baddump` columns.
+- With no configured DATs, the GUI shows the localized CLI `dat_missing_config` message, offers a path to Settings, and disables Verify. DAT parse/read errors are displayed without hiding results from readable DATs.
+- DAT downloads, download links, and DAT editing are omitted. MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping remain later work.
+
+**Settings**
+
+- Settings exposes locale choices `en` and `ja`, editable `cache_path`, and an ordered `dats` list with Add, Remove, and Browse controls. It also shows the resolved configuration path as read-only.
+- Save writes settings to YAML only; cache records and hashes never become YAML settings.
+- If the YAML file is missing, Save may create it with the displayed/default values. If it exists, automatic default creation must not overwrite it; changes to that file occur only after the user explicitly chooses Save.
+- Theme selection, automatic DAT downloads, and editing the configuration-file location are omitted until later.
+
+**Report**
+
+- Report shows the last scan summary and last DAT summary as read-only values.
+- It provides copy-to-clipboard for the summaries and may show export as a disabled later stub.
+- Organize preview appears only as a disabled later placeholder. Report history, export implementation, and organize execution are omitted until later.
 
 ## Collaboration
 
