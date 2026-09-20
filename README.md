@@ -45,7 +45,7 @@ File statuses: **Have** (hash and name), **WrongName** (hash only, including cas
 ## Planned
 
 - GUI (`yaRomChecker`) sharing the same core as `yarc`
-- Further DAT coverage (set completeness, No-Intro / Redump / TOSEC / MAME extras)
+- DAT families that need a different data model than one file ↔ one ROM (see Remaining DAT work in [Requirements](docs/REQUIREMENTS.md))
 - Organize (rename / quarantine), after a dry-run preview
 - External archive media checks (read-only; no writing to those media)
 

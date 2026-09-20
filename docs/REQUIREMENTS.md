@@ -70,6 +70,25 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - File statuses are `Have` (hash and name match), `WrongName` (hash matches but the name does not, including case-only differences), `WrongDump` (name matches but hashes or size do not), `Duplicate` (a later hash hit for a DAT ROM already filled by the first hit in scan order), and `Extra` (neither identity matches).
 - Each DAT ROM is filled by at most one file. It is `Present` when any file hash-matches it and `Missing` otherwise. `WrongDump` does not fill a DAT ROM.
 
+**Dump definitions with a different data model**
+
+The current matcher is **one collection file ↔ one DAT ROM** (hashes + exact name). The following circulated formats are dump databases, but they must **not** be treated as that model. Do not pretend a green Have/Missing report is complete for them until a dedicated issue implements the extra structure.
+
+| Format | Why the model differs | Status |
+| --- | --- | --- |
+| MAME ListXML (`mame -listxml`) | Machines, `cloneof` / `romof` / `merge`, BIOS sets; completeness is per machine, not per loose file | Remaining |
+| MAME software lists (`mame -getsoftlist`) | Separate XML family for software; not generic Logiqx ROM rows | Remaining |
+| MAME `-listinfo` (`emulator (` …) | Same brace grammar family as ClrMamePro, but arcade emulator header and set semantics | Remaining |
+| FBNeo / HBMAME (and similar arcade DATs) | Often look like Logiqx/CMP, but clone, BIOS, and samples are part of the set | Remaining (arcade model; generic ROM rows are not enough) |
+| Redump disc sets | One game is cue + multiple tracks/files, not one ROM file | Remaining |
+| TOSEC-ISO | Disc/ISO sets; TOSEC names are opaque, but the unit of matching is the set | Remaining |
+| CHD / ListXML `<disk>` | Compressed disc images with CHD hashes, not CRC/MD5/SHA1 of a raw ROM | Remaining |
+| No-Intro XSD / parent-clone DATs | Extra ids (`id`, `cloneofid`) and 1G1R parent/clone grouping | Remaining (file-level Logiqx rows may still parse) |
+| RomCenter DAT | Older manager format; not the same as ClrMamePro | Remaining |
+| Hardware Target Game Database SMDB | Hash table schema, not a Logiqx/CMP datafile | Remaining |
+
+Headered vs headerless dumps, TorrentZip layout, and cue/gdi pairing are **file interpretation** issues, not extra DAT file formats. They stay out of this table.
+
 ## Organize (later, destructive)
 
 Recommended until decided otherwise: dry-run default, confirm in GUI, quarantine instead of delete.
@@ -109,3 +128,22 @@ Flow is **issue → Codex PR → Cursor review/test report → human merge**. De
 - CI details
 - Exact cache file location field names
 - External media health metrics
+
+## Remaining DAT work (different data models)
+
+Not started. Implement only via GitHub issues (one family per issue when practical). Do not bundle DAT dumps or add downloaders.
+
+Suggested order:
+
+1. Redump disc sets (cue + multiple tracks/files)
+2. No-Intro parent-clone / XSD ids (1G1R grouping)
+3. MAME ListXML (machine completeness, clone, BIOS, merge)
+4. CHD / `<disk>` hashes
+5. MAME software lists
+6. MAME `-listinfo` (`emulator (` header)
+7. Arcade set model for FBNeo / HBMAME (clone, BIOS, samples)
+8. TOSEC-ISO disc sets
+9. RomCenter DAT
+10. SMDB hash lists
+
+Checksum-only lists (`.sfv` / `.md5` / `.sha1`), RetroArch `.rdb`, and launcher XML (HyperList, LaunchBox, EmulationStation) are not dump DATs; they are out of this remaining list unless a later issue says otherwise.
