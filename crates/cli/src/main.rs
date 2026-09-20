@@ -8,7 +8,8 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
 use yaromchecker_core::{
-    DatFile, DatRomStatus, DumpStatus, FileStatus, ScanCache, ScanMode, Scanner, match_collection,
+    DatFile, DatRomStatus, DumpStatus, FileStatus, ScanCache, ScanMode, Scanner, SetStatus,
+    match_collection,
 };
 
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -363,6 +364,19 @@ fn print_dat_report(
             ],
         )
     );
+    for set in &report.sets {
+        println!(
+            "{}",
+            messages.format(
+                "dat_set_line",
+                "{status}  {game}",
+                &[
+                    ("status", set_status_text(messages, set.status).to_owned()),
+                    ("game", set.game.clone()),
+                ],
+            )
+        );
+    }
     for entry in &report.files {
         let status = marked_file_status(messages, entry.status, entry.dump_status);
         if entry.status == FileStatus::Extra {
@@ -433,6 +447,14 @@ fn print_dat_report(
         );
     }
     Ok(())
+}
+
+fn set_status_text(messages: &Messages, status: SetStatus) -> &str {
+    match status {
+        SetStatus::Complete => messages.text("set_status_complete", "Complete"),
+        SetStatus::Incomplete => messages.text("set_status_incomplete", "Incomplete"),
+        SetStatus::MissingSet => messages.text("set_status_missing", "MissingSet"),
+    }
 }
 
 fn marked_file_status(
@@ -543,6 +565,20 @@ mod tests {
         assert_eq!(
             marked_file_status(&messages, FileStatus::Have, Some(DumpStatus::BadDump)),
             "Have (baddump)"
+        );
+    }
+
+    #[test]
+    fn provides_english_text_for_every_set_status() {
+        let messages = Messages::load("en").unwrap();
+        assert_eq!(set_status_text(&messages, SetStatus::Complete), "Complete");
+        assert_eq!(
+            set_status_text(&messages, SetStatus::Incomplete),
+            "Incomplete"
+        );
+        assert_eq!(
+            set_status_text(&messages, SetStatus::MissingSet),
+            "MissingSet"
         );
     }
 }

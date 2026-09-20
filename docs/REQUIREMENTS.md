@@ -75,6 +75,8 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - An unfilled ROM is `MissingInArchive` when another ROM with the same exact DAT `game` title is `Present` because it was filled from a ZIP or 7z inner entry. The filling entry's `container_path` is the archive evidence; archive file names are never used to infer games. An unfilled ROM is `Missing` otherwise, including when its sibling was filled by a loose file or when the entire archive is absent.
 - Unreadable archives remain scan errors and do not produce a DAT ROM status.
 - A ROM marked `nodump` is not missing and cannot be filled. A ROM marked `baddump` still matches normally by all listed hashes and optional size, and reports visibly identify it as a bad dump.
+- Group DAT ROM rows by their game display title and report an additional per-game set status. Exclude `nodump` rows from the required ROMs and omit games containing only `nodump` rows from the set list. A set is `Complete` when every required ROM is hash-filled, `Incomplete` when at least one but not every required ROM is hash-filled, and `MissingSet` when none is hash-filled. `Have`, `WrongName`, and `Duplicate` indicate a hash-filled ROM; `Extra`, `WrongDump`, `Missing`, and `MissingInArchive` do not. A hash-filled `baddump` ROM counts as filled while retaining its bad-dump mark.
+- DAT-listed `.cue` files are ordinary ROM rows matched by their own name, hashes, and optional size. Cue-sheet contents are not parsed to discover tracks; every track must be listed explicitly in the DAT.
 
 **Dump definitions with a different data model**
 
@@ -86,7 +88,7 @@ The current matcher is **one collection file ↔ one DAT ROM** (hashes + exact n
 | MAME software lists (`mame -getsoftlist`) | Separate XML family for software; not generic Logiqx ROM rows | Remaining |
 | MAME `-listinfo` (`emulator (` …) | Same brace grammar family as ClrMamePro, but arcade emulator header and set semantics | Remaining |
 | FBNeo / HBMAME (and similar arcade DATs) | Often look like Logiqx/CMP, but clone, BIOS, and samples are part of the set | Remaining (arcade model; generic ROM rows are not enough) |
-| Redump disc sets | One game is cue + multiple tracks/files, not one ROM file | Remaining |
+| Redump disc sets | One game is cue + multiple tracks/files, not one ROM file | Per-game set status from DAT ROM rows implemented; cue-sheet parsing, CHD, and GDI remain later |
 | TOSEC-ISO | Disc/ISO sets; TOSEC names are opaque, but the unit of matching is the set | Remaining |
 | CHD / ListXML `<disk>` | Compressed disc images with CHD hashes, not CRC/MD5/SHA1 of a raw ROM | Remaining |
 | No-Intro XSD / parent-clone DATs | Extra ids (`id`, `cloneofid`) and 1G1R parent/clone grouping | Remaining (file-level Logiqx rows may still parse) |
@@ -185,7 +187,7 @@ Not started. Implement only via GitHub issues (one family per issue when practic
 
 Suggested order:
 
-1. Redump disc sets (cue + multiple tracks/files)
+1. Redump follow-up work (cue-sheet parsing, CHD, and GDI; DAT ROM-row set status is implemented)
 2. No-Intro parent-clone / XSD ids (1G1R grouping)
 3. MAME ListXML (machine completeness, clone, BIOS, merge)
 4. CHD / `<disk>` hashes
