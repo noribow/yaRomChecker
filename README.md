@@ -24,7 +24,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## Configuration
 
-If `yaRomChecker.yaml` (or the path given to `--config`) does not exist, `yarc` creates it with default contents and then loads it. Existing files are never overwritten. Relative cache paths are resolved from the configuration file's directory.
+If `yaRomChecker.yaml` (or the path given to `--config`) does not exist, `yarc` creates it with default contents and then loads it. Existing files are never overwritten. Relative cache, DAT, and collection paths are resolved from the configuration file's directory. Configure ordered DAT and collection pairs that share one scan cache:
+
+```yaml
+locale: en
+cache_path: yaRomChecker-cache.sqlite3
+sources:
+  - dat: dats/nointro-nes.dat
+    collection: collections/nes
+  - dat: dats/tosec.dat
+    collection: collections/tosec
+```
 
 The default locale is English. Additional languages use resource files under `locales/`.
 
@@ -33,10 +43,10 @@ The default locale is English. Additional languages use resource files under `lo
 ```powershell
 yarc scan C:\path\to\collection
 yarc quick C:\path\to\collection
-yarc verify C:\path\to\collection
+yarc verify
 ```
 
-`verify` performs a quick scan, then matches the collection against user-supplied No-Intro-family and TOSEC-family DAT files listed under `dats:` in the YAML config. Logiqx XML and ClrMamePro text DATs are detected by content. Every hash the DAT lists for a ROM (CRC32, MD5, SHA1) must match; size, if present, must match too. Names, including long TOSEC-style names, are compared exactly and case-sensitively to the DAT `rom` name.
+`verify` quick-scans each unique collection directory under `sources:` into the shared cache, then matches every DAT only against its paired directory. Sources that share a collection get independent reports from the same cached scan rows. Logiqx XML and ClrMamePro text DATs are detected by content. Every hash the DAT lists for a ROM (CRC32, MD5, SHA1) must match; size, if present, must match too. Names, including long TOSEC-style names, are compared exactly and case-sensitively to the DAT `rom` name.
 
 File statuses: **Have** (hash and name), **WrongName** (hash only, including case-only name differences), **WrongDump** (name only), **Duplicate** (later hash hit for a ROM already filled), **Extra** (neither). A DAT ROM is **Present** after any hash hit and **Missing** otherwise; WrongDump does not fill it.
 

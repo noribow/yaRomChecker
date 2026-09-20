@@ -29,8 +29,8 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 - Default file: `yaRomChecker.yaml` in the **same directory as the executable** (not the current working directory).
 - CLI may pass `--config <path>`.
 - If the config file **does not exist**, create it at that path with the default contents (`locale: en` and a default `cache_path`) and then load it. Do not overwrite an existing file.
-- Optional `dats:` list of user-supplied Logiqx XML or ClrMamePro text DAT paths (relative to the YAML file, or absolute). Used by `yarc verify`. Do not bundle copyrighted DAT dumps or provide download links.
-- Scan caches (hashes, sizes, mtimes) may use SQLite or another derived store. Paths for cache/logs belong in YAML.
+- Ordered `sources:` entries pair a user-supplied Logiqx XML or ClrMamePro text DAT with its collection directory. Both paths may be relative to the YAML file or absolute. An empty list makes `yarc verify` fail with the missing-source configuration message. Do not bundle copyrighted DAT dumps or provide download links.
+- All source collections and explicit CLI scans share the one configured scan cache. Scan caches (hashes, sizes, mtimes) may use SQLite or another derived store. Paths for cache/logs belong in YAML.
 
 ## i18n
 
@@ -63,6 +63,8 @@ Avoid Win32-only APIs where a portable path exists (Linux is planned). Do not co
 
 **DAT matching**
 
+- Verification quick-scans each unique configured collection directory into the shared cache, then matches each DAT only against scan entries whose canonical container path is that collection directory or a descendant. Collection membership never depends on the DAT file name. Sources sharing a collection produce independent reports from the same scan rows.
+- Never flatten ROM rows from multiple DATs into a global fill index. Hash fills, duplicates, extras, missing-in-archive evidence, and set completeness are scoped to one DAT and collection pair.
 - User-supplied No-Intro-family and TOSEC-family DATs in Logiqx XML or ClrMamePro text format. Detect the format from the content. Do not bundle DAT dumps, provide download links, or add downloaders.
 - Read Logiqx header name, description, version, homepage, and URL. `yarc verify` prints the header name and version when present.
 - Support both `game` and `machine` records. Use their description as the display title when present.
@@ -100,6 +102,7 @@ Headered vs headerless dumps, TorrentZip layout, and cue/gdi pairing are **file 
 ## Organize (later, destructive)
 
 Recommended until decided otherwise: dry-run default, confirm in GUI, quarantine instead of delete.
+Organize planning must use the shared scan-cache rows for a source collection; it must not create per-DAT copies of scanned files.
 
 ## External archive media (feature, implementation TBD)
 
@@ -119,7 +122,7 @@ In scope later: media health; copy **from** media into the working collection to
 
 - Navigation contains Main, Scan, DAT / Verify, Settings, and Report.
 - Organize and External media appear only as disabled navigation placeholders for later work.
-- A persistent status bar shows the collection root, the last scan summary (entry, hashed-container, and reused-container counts), the selected locale, and the resolved configuration path. The configuration path is read-only.
+- A persistent status bar shows the active collection root, the last scan summary (entry, hashed-container, and reused-container counts), the selected locale, and the resolved configuration path. The configuration path is read-only.
 
 **Main**
 
@@ -139,17 +142,17 @@ In scope later: media health; copy **from** media into the working collection to
 
 **DAT / Verify**
 
-- The configured-DAT list is read-only and shows each DAT's header name, version, and path.
-- Verify performs a quick scan and then DAT matching.
-- The summary shows collection files, present DAT ROMs, missing DAT ROMs, and `nodump` DAT ROMs.
+- The configured-source list is read-only and shows each DAT's header name, version, DAT path, and paired collection directory.
+- Verify quick-scans unique source collections into the shared cache and then matches each configured pair independently.
+- Each source has its own summary showing collection files, present DAT ROMs, missing DAT ROMs, and `nodump` DAT ROMs.
 - The collection-file table has status, path, game display title, DAT ROM name, and `baddump` columns, with Have, WrongName, WrongDump, Duplicate, and Extra filters.
 - A second, separate DAT-ROM table has state (`Present`, `Missing`, or `nodump`), game display title, name, and `baddump` columns.
-- With no configured DATs, the GUI shows the localized CLI `dat_missing_config` message, offers a path to Settings, and disables Verify. DAT parse/read errors are displayed without hiding results from readable DATs.
+- With no configured sources, the GUI shows the localized CLI `dat_missing_config` message, offers a path to Settings, and disables Verify. DAT parse/read errors are displayed without hiding results from readable sources.
 - DAT downloads, download links, and DAT editing are omitted. MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping remain later work.
 
 **Settings**
 
-- Settings exposes locale choices `en` and `ja`, editable `cache_path`, and an ordered `dats` list with Add, Remove, and Browse controls. It also shows the resolved configuration path as read-only.
+- Settings exposes locale choices `en` and `ja`, editable `cache_path`, and an ordered `sources` list whose rows contain DAT and collection paths with Add, Remove, and Browse controls. It also shows the resolved configuration path as read-only.
 - Save writes settings to YAML only; cache records and hashes never become YAML settings.
 - If the YAML file is missing, Save may create it with the displayed/default values. If it exists, automatic default creation must not overwrite it; changes to that file occur only after the user explicitly chooses Save.
 - Theme selection, automatic DAT downloads, and editing the configuration-file location are omitted until later.
