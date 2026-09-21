@@ -29,7 +29,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 | v TOSEC Example                  | Example Game 2    Incomplete        1       1               |
 |     ...                          |                                                             |
 | (empty: dat_missing_config)      | Select a DAT in the tree to list its sets.                  |
-+----------------------------------+-------------------------------------------------------------+
+|<------ draggable horizontal ---->|<---------------- draggable horizontal -------------------->|
 | External media (later)           | Inner files                                                 |
 | Placeholder. Health check and    | Name     Size  mtime  CRC32 MD5 SHA1 Checked                 |
 | copy-from-media: later.          | rom.bin                                                     |
@@ -40,6 +40,8 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 | Config: C:\...\yaRomChecker.yaml (read-only)                                                   |
 +------------------------------------------------------------------------------------------------+
 ```
+
+The center `|` is one full-height draggable vertical splitter across the four-pane region. The two horizontal splitters are independently draggable and terminate at that vertical splitter. All four panes keep a small minimum size; splitter positions last for the current session only.
 
 ### Menu bar
 
