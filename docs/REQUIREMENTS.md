@@ -143,6 +143,7 @@ In scope later: media health; copy **from** media into the working collection to
 **DAT display**
 
 - DAT / Verify is not a separate full page. Selecting a source lists that DAT's sets; status and counts appear after the user runs Verify. Matching is per source. The bottom-right pane lists member files when the selected set is not a single loose file.
+- The Sets table headers sort Name, displayed Status, Present, Missing, MissingInArchive, and nodump. Repeated clicks on one header cycle ascending, descending, and original DAT order; clicking another header starts ascending. Name sorting is case-sensitive, count sorting is numeric, and blank unverified counts precede numbers in ascending order. Sorting is session-only and does not start Scan or Verify.
 - The top-left source title uses ASCII parentheses and slash with no spaces inside the count: for example, `No-Intro Example (12/340)`.
 - DAT downloads, download links, and DAT editing are omitted. MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping remain later work.
 

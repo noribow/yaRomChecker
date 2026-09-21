@@ -75,6 +75,7 @@ The center `|` is one full-height draggable vertical splitter across the four-pa
   - **Name** — DAT game display title.
   - **Status** — `Complete`, `Incomplete`, or `MissingSet` after a user-run Verify. Before Verify, status and counts are empty or a not-verified placeholder; do not invent a match.
   - **Counts for each status** on that set: at least Present, Missing, MissingInArchive, and nodump (ROM-side). Extra is not a set-row count.
+- A left-click on a column header sorts its rows. Repeated clicks on the same header cycle ascending, descending, and the exact original DAT row order; clicking another header starts ascending. Name uses case-sensitive lexicographic order, Status uses its displayed text (including `Not verified`), and counts use numeric order. Blank unverified counts are missing values and precede every number when ascending. This sort state lasts for the current session and does not start Scan or Verify.
 - Empty state: `Select a DAT in the tree to list its sets.`
 - With a DAT selected but Verify not yet run: keep the pane with set names if they can be listed from the DAT alone, or an empty table plus `Run Verify to see statuses.` Do not navigate to another screen.
 
