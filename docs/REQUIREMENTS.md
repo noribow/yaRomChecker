@@ -76,7 +76,7 @@ Each source row:
 
 Do not bundle DAT dumps or provide download links. Do not add nested `folder` / `sources` trees in YAML. Matching still uses only `sources` rows. `dat_roots` and `collection_root` are settings for the GUI tree and for deriving new source rows; `yarc` does not print a tree.
 
-All source collections and extra CLI scan folders share **one** configured scan cache.
+All configured `sources[].collection` directories share **one** configured scan cache.
 
 ## i18n
 
@@ -99,7 +99,7 @@ Hashes: CRC32, MD5, SHA1 (stream; do not load whole files into RAM when a stream
 
 **Quick rescan:** if **file name + path + size + mtime** all match a stored record, reuse hashes. For archives those four fields apply to the **container**; if they match, reuse inner-entry hashes. Any mismatch: re-hash like an initial scan.
 
-`yarc verify` quick-scans each **unique** configured collection into that shared cache, then matches.
+`yarc scan`, `quick`, and `full` hash each **unique** configured collection into that shared cache (full vs reuse per subcommand). `yarc verify` quick-scans those same collections, then matches. None of these subcommands take a collection path argument.
 
 ## DAT matching
 
@@ -141,9 +141,17 @@ DAT **content** trees (parent/clone, header groups, MAME machines) are **not** t
 
 ## CLI (`yarc`)
 
-Subcommands: initial `scan`, `quick` rescan, `full` rescan (each takes a folder path into the shared cache), and `verify` (configured `sources` only; no extra collection path argument).
+Subcommands: initial `scan`, `quick` rescan, `full` rescan, and `verify`. **None of them take a collection folder on the command line.** The scan target is every unique resolved `sources[].collection` from YAML (same membership as GUI Scan / `yarc verify`’s scan step). `--config` remains the only path-related flag.
 
-Verify with empty `sources` fails with the missing-source message. CLI does **not** print a folder/DAT tree. Hierarchy is GUI-only.
+Empty `sources` makes `scan`, `quick`, `full`, and `verify` fail with the missing-source message. Duplicate collection directories are scanned once. `dat_roots` and `collection_root` are not scan roots. CLI does **not** print a folder/DAT tree. Hierarchy is GUI-only.
+
+```mermaid
+flowchart TB
+  cmd["yarc scan | quick | full"]
+  yaml["YAML sources[].collection unique dirs"]
+  cache["Shared scan cache"]
+  cmd --> yaml --> cache
+```
 
 ## GUI
 
