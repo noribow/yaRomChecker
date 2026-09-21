@@ -66,6 +66,27 @@ pub struct ScanReport {
     pub reused_containers: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScanProgress {
+    Started {
+        containers: usize,
+    },
+    ContainerStarted {
+        path: PathBuf,
+        inner_total: Option<usize>,
+        reused: bool,
+    },
+    InnerHashed {
+        hashed: usize,
+        total: usize,
+    },
+    ContainerFinished {
+        path: PathBuf,
+        reused: bool,
+        inner_total: Option<usize>,
+    },
+}
+
 pub struct Scanner {
     cache: ScanCache,
 }
@@ -138,6 +159,83 @@ impl Scanner {
         }
         Ok(report)
     }
+
+    /// Scans containers sequentially and reports container and archive-member progress.
+    pub fn scan_with_detailed_progress<F>(
+        &mut self,
+        root: &Path,
+        mode: ScanMode,
+        mut progress: F,
+    ) -> Result<ScanReport>
+    where
+        F: FnMut(ScanProgress),
+    {
+        if !root.is_dir() {
+            return Err(crate::Error::NotDirectory(root.display().to_string()));
+        }
+        let mut files: Vec<_> = WalkDir::new(root)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Ok(e) if e.file_type().is_file() => Some(Ok(e.into_path())),
+                Ok(_) => None,
+                Err(e) => Some(Err(e.into())),
+            })
+            .collect::<Result<_>>()?;
+        files.sort();
+        progress(ScanProgress::Started {
+            containers: files.len(),
+        });
+
+        let mut report = ScanReport::default();
+        for path in files {
+            let identity = FileIdentity::read(&path)?;
+            if mode == ScanMode::Quick {
+                let cached = self.cache.matching(
+                    &identity.path,
+                    &identity.name,
+                    identity.size,
+                    identity.mtime_ns,
+                )?;
+                if !cached.is_empty() {
+                    let inner_total = archive_kind(&path).then_some(cached.len());
+                    progress(ScanProgress::ContainerStarted {
+                        path: path.clone(),
+                        inner_total,
+                        reused: true,
+                    });
+                    report.reused_containers += 1;
+                    report.entries.extend(cached);
+                    progress(ScanProgress::ContainerFinished {
+                        path,
+                        reused: true,
+                        inner_total,
+                    });
+                    continue;
+                }
+            }
+
+            let inner_total = archive_inner_total(&path)?;
+            progress(ScanProgress::ContainerStarted {
+                path: path.clone(),
+                inner_total,
+                reused: false,
+            });
+            debug!(path = %identity.path, "hashing file");
+            let entries = scan_file_with_progress(&path, &identity, |hashed, total| {
+                progress(ScanProgress::InnerHashed { hashed, total });
+            })?;
+            self.cache.replace(&identity.path, &entries)?;
+            report.hashed_containers += 1;
+            report.entries.extend(entries);
+            progress(ScanProgress::ContainerFinished {
+                path,
+                reused: false,
+                inner_total,
+            });
+        }
+        Ok(report)
+    }
 }
 
 struct FileIdentity {
@@ -169,6 +267,17 @@ impl FileIdentity {
 }
 
 fn scan_file(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
+    scan_file_with_progress(path, identity, |_, _| {})
+}
+
+fn scan_file_with_progress<F>(
+    path: &Path,
+    identity: &FileIdentity,
+    mut progress: F,
+) -> Result<Vec<ScanEntry>>
+where
+    F: FnMut(usize, usize),
+{
     let last_hashed_ns = unix_time_ns(SystemTime::now());
     match path
         .extension()
@@ -176,8 +285,8 @@ fn scan_file(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
         .map(str::to_ascii_lowercase)
         .as_deref()
     {
-        Some("zip") => scan_zip(path, identity, last_hashed_ns),
-        Some("7z") => scan_7z(path, identity, last_hashed_ns),
+        Some("zip") => scan_zip(path, identity, last_hashed_ns, &mut progress),
+        Some("7z") => scan_7z(path, identity, last_hashed_ns, &mut progress),
         _ => Ok(vec![make_entry(
             identity,
             &identity.name,
@@ -189,8 +298,25 @@ fn scan_file(path: &Path, identity: &FileIdentity) -> Result<Vec<ScanEntry>> {
     }
 }
 
-fn scan_zip(path: &Path, identity: &FileIdentity, last_hashed_ns: i64) -> Result<Vec<ScanEntry>> {
+fn scan_zip<F>(
+    path: &Path,
+    identity: &FileIdentity,
+    last_hashed_ns: i64,
+    progress: &mut F,
+) -> Result<Vec<ScanEntry>>
+where
+    F: FnMut(usize, usize),
+{
     let mut archive = zip::ZipArchive::new(File::open(path)?)?;
+    let total = (0..archive.len())
+        .map(|index| {
+            archive
+                .by_index(index)
+                .map(|file| usize::from(!file.is_dir()))
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .sum();
     let mut entries = Vec::new();
     for index in 0..archive.len() {
         let mut file = archive.by_index(index)?;
@@ -208,12 +334,27 @@ fn scan_zip(path: &Path, identity: &FileIdentity, last_hashed_ns: i64) -> Result
             hashes,
             last_hashed_ns,
         ));
+        progress(entries.len(), total);
     }
     Ok(entries)
 }
 
-fn scan_7z(path: &Path, identity: &FileIdentity, last_hashed_ns: i64) -> Result<Vec<ScanEntry>> {
+fn scan_7z<F>(
+    path: &Path,
+    identity: &FileIdentity,
+    last_hashed_ns: i64,
+    progress: &mut F,
+) -> Result<Vec<ScanEntry>>
+where
+    F: FnMut(usize, usize),
+{
     let mut archive = ArchiveReader::open(path, Password::empty())?;
+    let total = archive
+        .archive()
+        .files
+        .iter()
+        .filter(|entry| !entry.is_directory())
+        .count();
     let mut entries = Vec::new();
     archive.for_each_entries(|entry, reader| {
         if !entry.is_directory() {
@@ -226,10 +367,56 @@ fn scan_7z(path: &Path, identity: &FileIdentity, last_hashed_ns: i64) -> Result<
                 hashes,
                 last_hashed_ns,
             ));
+            progress(entries.len(), total);
         }
         Ok(true)
     })?;
     Ok(entries)
+}
+
+fn archive_kind(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("zip" | "7z")
+    )
+}
+
+fn archive_inner_total(path: &Path) -> Result<Option<usize>> {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("zip") => {
+            let mut archive = zip::ZipArchive::new(File::open(path)?)?;
+            let total = (0..archive.len())
+                .map(|index| {
+                    archive
+                        .by_index(index)
+                        .map(|file| usize::from(!file.is_dir()))
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()?
+                .into_iter()
+                .sum();
+            Ok(Some(total))
+        }
+        Some("7z") => {
+            let archive = ArchiveReader::open(path, Password::empty())?;
+            Ok(Some(
+                archive
+                    .archive()
+                    .files
+                    .iter()
+                    .filter(|entry| !entry.is_directory())
+                    .count(),
+            ))
+        }
+        _ => Ok(None),
+    }
 }
 
 fn make_entry(
@@ -333,6 +520,67 @@ mod tests {
                 "900150983cd24fb0d6963f7d28e17f72"
             );
         }
+    }
+
+    #[test]
+    fn detailed_progress_counts_zip_members_and_hashes_them_sequentially() {
+        let (_temp, collection, mut scanner) = setup();
+        let path = collection.join("games.zip");
+        let mut archive = ZipWriter::new(File::create(&path).unwrap());
+        archive
+            .add_directory("empty/", SimpleFileOptions::default())
+            .unwrap();
+        for name in ["one.rom", "two.rom"] {
+            archive
+                .start_file(name, SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(name.as_bytes()).unwrap();
+        }
+        archive.finish().unwrap();
+
+        let mut events = Vec::new();
+        scanner
+            .scan_with_detailed_progress(&collection, ScanMode::Full, |event| events.push(event))
+            .unwrap();
+        assert_eq!(events[0], ScanProgress::Started { containers: 1 });
+        assert!(matches!(
+            &events[1],
+            ScanProgress::ContainerStarted {
+                inner_total: Some(2),
+                ..
+            }
+        ));
+        assert!(events.contains(&ScanProgress::InnerHashed {
+            hashed: 1,
+            total: 2
+        }));
+        assert!(events.contains(&ScanProgress::InnerHashed {
+            hashed: 2,
+            total: 2
+        }));
+        assert!(matches!(
+            events.last(),
+            Some(ScanProgress::ContainerFinished {
+                reused: false,
+                inner_total: Some(2),
+                ..
+            })
+        ));
+
+        let mut reused_events = Vec::new();
+        scanner
+            .scan_with_detailed_progress(&collection, ScanMode::Quick, |event| {
+                reused_events.push(event)
+            })
+            .unwrap();
+        assert!(matches!(
+            &reused_events[1],
+            ScanProgress::ContainerStarted {
+                inner_total: Some(2),
+                reused: true,
+                ..
+            }
+        ));
     }
 
     #[test]
