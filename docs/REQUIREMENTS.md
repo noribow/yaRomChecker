@@ -149,6 +149,7 @@ In scope later: media health; copy **from** media into the working collection to
 **Settings**
 
 - Settings exposes locale choices `en` and `ja`, editable `cache_path`, and an ordered `sources` list whose rows contain DAT and collection paths with Add, Remove, and Browse controls. It also shows the resolved configuration path as read-only.
+- Settings can bulk-add the non-recursive `*.dat` and `*.xml` contents of a chosen folder. Each collection path is the chosen collections parent joined with the DAT header name, or the DAT file stem when the name is missing. Only Windows-illegal folder characters (`<>:"/\\|?*`) and trailing dots/spaces are sanitized; directories are not created. Existing DAT paths are skipped, and unreadable DATs are reported without discarding successful additions.
 - Save writes settings to YAML only; cache records and hashes never become YAML settings.
 - If the YAML file is missing, Save may create it with the displayed/default values. If it exists, automatic default creation must not overwrite it; changes to that file occur only after the user explicitly chooses Save.
 - Theme selection, automatic DAT downloads, and editing the configuration-file location are omitted until later.
