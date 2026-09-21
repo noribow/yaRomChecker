@@ -15,7 +15,7 @@ use yaromchecker_core::{
     DatFile, DatRomStatus, EntryKind, MatchReport, ScanCache, ScanEntry, ScanMode, ScanReport,
     Scanner, SetStatus, match_collection,
 };
-use yaromchecker_gui::{dat_member_rows, set_count_text, should_show_member_pane, source_title};
+use yaromchecker_gui::{dat_member_rows, should_show_member_pane, source_title};
 
 const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -186,6 +186,64 @@ struct MemberRow {
     entry: Option<ScanEntry>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SetRow {
+    name: String,
+    status: String,
+    counts: [Option<usize>; 4],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SetSortColumn {
+    Name,
+    Status,
+    Present,
+    Missing,
+    MissingInArchive,
+    NoDump,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SortDirection {
+    Ascending,
+    Descending,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct SetSortState(Option<(SetSortColumn, SortDirection)>);
+
+impl SetSortState {
+    fn cycle(self, column: SetSortColumn) -> Self {
+        Self(match self.0 {
+            Some((current, SortDirection::Ascending)) if current == column => {
+                Some((column, SortDirection::Descending))
+            }
+            Some((current, SortDirection::Descending)) if current == column => None,
+            _ => Some((column, SortDirection::Ascending)),
+        })
+    }
+}
+
+fn sort_set_rows(rows: &mut [SetRow], state: SetSortState) {
+    let Some((column, direction)) = state.0 else {
+        return;
+    };
+    rows.sort_by(|left, right| {
+        let ordering = match column {
+            SetSortColumn::Name => left.name.cmp(&right.name),
+            SetSortColumn::Status => left.status.cmp(&right.status),
+            SetSortColumn::Present => left.counts[0].cmp(&right.counts[0]),
+            SetSortColumn::Missing => left.counts[1].cmp(&right.counts[1]),
+            SetSortColumn::MissingInArchive => left.counts[2].cmp(&right.counts[2]),
+            SetSortColumn::NoDump => left.counts[3].cmp(&right.counts[3]),
+        };
+        match direction {
+            SortDirection::Ascending => ordering,
+            SortDirection::Descending => ordering.reverse(),
+        }
+    });
+}
+
 struct App {
     config_path: PathBuf,
     config: Config,
@@ -194,6 +252,7 @@ struct App {
     surface: Surface,
     selected_source: Option<usize>,
     selected_set: Option<String>,
+    set_sort: SetSortState,
     dats: Vec<std::result::Result<DatFile, String>>,
     verified: HashMap<usize, VerifiedSource>,
     scan_popup: bool,
@@ -225,6 +284,7 @@ impl App {
             surface: Surface::Main,
             selected_source: None,
             selected_set: None,
+            set_sort: SetSortState::default(),
             dats: Vec::new(),
             verified: HashMap::new(),
             scan_popup: false,
@@ -512,7 +572,7 @@ impl App {
         });
     }
 
-    fn set_rows(&self) -> Vec<(String, Option<SetStatus>, String, String, String, String)> {
+    fn set_rows(&self) -> Vec<SetRow> {
         let Some(index) = self.selected_source else {
             return Vec::new();
         };
@@ -552,23 +612,25 @@ impl App {
                     let missing = count(DatRomStatus::Missing);
                     let missing_in_archive = count(DatRomStatus::MissingInArchive);
                     let nodump = count(DatRomStatus::NoDump);
-                    (
-                        game,
-                        status,
-                        set_count_text(true, present),
-                        set_count_text(true, missing),
-                        set_count_text(true, missing_in_archive),
-                        set_count_text(true, nodump),
-                    )
+                    SetRow {
+                        name: game,
+                        status: status
+                            .map(|value| set_status(&self.messages, value))
+                            .unwrap_or_else(|| self.messages.text("gui_not_verified"))
+                            .to_owned(),
+                        counts: [
+                            Some(present),
+                            Some(missing),
+                            Some(missing_in_archive),
+                            Some(nodump),
+                        ],
+                    }
                 } else {
-                    (
-                        game,
-                        None,
-                        set_count_text(false, 0),
-                        set_count_text(false, 0),
-                        set_count_text(false, 0),
-                        set_count_text(false, 0),
-                    )
+                    SetRow {
+                        name: game,
+                        status: self.messages.text("gui_not_verified").to_owned(),
+                        counts: [None; 4],
+                    }
                 }
             })
             .collect()
@@ -580,7 +642,8 @@ impl App {
             ui.label(self.messages.text("gui_select_dat"));
             return;
         }
-        let rows = self.set_rows();
+        let mut rows = self.set_rows();
+        sort_set_rows(&mut rows, self.set_sort);
         if !self.verified.contains_key(&self.selected_source.unwrap()) {
             ui.label(self.messages.text("gui_run_verify"));
         }
@@ -590,43 +653,57 @@ impl App {
             .column(Column::auto())
             .columns(Column::auto(), 4)
             .header(22.0, |mut header| {
-                for label in [
-                    self.messages.text("gui_column_name"),
-                    self.messages.text("gui_column_status"),
-                    self.messages.text("gui_status_present"),
-                    self.messages.text("gui_status_missing"),
-                    self.messages.text("gui_status_missing_in_archive"),
-                    self.messages.text("gui_status_nodump"),
-                ] {
+                let columns = [
+                    (self.messages.text("gui_column_name"), SetSortColumn::Name),
+                    (
+                        self.messages.text("gui_column_status"),
+                        SetSortColumn::Status,
+                    ),
+                    (
+                        self.messages.text("gui_status_present"),
+                        SetSortColumn::Present,
+                    ),
+                    (
+                        self.messages.text("gui_status_missing"),
+                        SetSortColumn::Missing,
+                    ),
+                    (
+                        self.messages.text("gui_status_missing_in_archive"),
+                        SetSortColumn::MissingInArchive,
+                    ),
+                    (
+                        self.messages.text("gui_status_nodump"),
+                        SetSortColumn::NoDump,
+                    ),
+                ];
+                for (label, column) in columns {
                     header.col(|ui| {
-                        ui.strong(label);
+                        if ui.button(RichText::new(label).strong()).clicked() {
+                            self.set_sort = self.set_sort.cycle(column);
+                        }
                     });
                 }
             })
             .body(|mut body| {
-                for (game, status, present, missing, missing_archive, nodump) in rows {
+                for set in rows {
                     body.row(20.0, |mut row| {
                         row.col(|ui| {
                             if ui
                                 .selectable_label(
-                                    self.selected_set.as_deref() == Some(&game),
-                                    &game,
+                                    self.selected_set.as_deref() == Some(&set.name),
+                                    &set.name,
                                 )
                                 .clicked()
                             {
-                                self.selected_set = Some(game.clone());
+                                self.selected_set = Some(set.name.clone());
                             }
                         });
                         row.col(|ui| {
-                            ui.label(
-                                status
-                                    .map(|value| set_status(&self.messages, value))
-                                    .unwrap_or_else(|| self.messages.text("gui_not_verified")),
-                            );
+                            ui.label(&set.status);
                         });
-                        for value in [present, missing, missing_archive, nodump] {
+                        for value in set.counts {
                             row.col(|ui| {
-                                ui.label(value);
+                                ui.label(value.map(|count| count.to_string()).unwrap_or_default());
                             });
                         }
                     });
@@ -1272,6 +1349,90 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sort_row(name: &str, status: &str, counts: [Option<usize>; 4]) -> SetRow {
+        SetRow {
+            name: name.to_owned(),
+            status: status.to_owned(),
+            counts,
+        }
+    }
+
+    #[test]
+    fn set_sort_cycle_returns_to_original_order_and_new_column_starts_ascending() {
+        let initial = SetSortState::default();
+        let name_ascending = initial.cycle(SetSortColumn::Name);
+        assert_eq!(
+            name_ascending,
+            SetSortState(Some((SetSortColumn::Name, SortDirection::Ascending)))
+        );
+        let name_descending = name_ascending.cycle(SetSortColumn::Name);
+        assert_eq!(
+            name_descending,
+            SetSortState(Some((SetSortColumn::Name, SortDirection::Descending)))
+        );
+        assert_eq!(
+            name_descending.cycle(SetSortColumn::Name),
+            SetSortState::default()
+        );
+        assert_eq!(
+            name_descending.cycle(SetSortColumn::Status),
+            SetSortState(Some((SetSortColumn::Status, SortDirection::Ascending)))
+        );
+    }
+
+    #[test]
+    fn set_sort_helper_sorts_text_and_all_numeric_columns() {
+        let original = vec![
+            sort_row("beta", "Incomplete", [Some(2), Some(0), Some(4), Some(1)]),
+            sort_row("Alpha", "Complete", [Some(1), Some(3), Some(0), Some(5)]),
+            sort_row("alpha", "Not verified", [None, None, None, None]),
+        ];
+
+        for (column, expected) in [
+            (SetSortColumn::Name, vec!["Alpha", "alpha", "beta"]),
+            (SetSortColumn::Status, vec!["Alpha", "beta", "alpha"]),
+            (SetSortColumn::Present, vec!["alpha", "Alpha", "beta"]),
+            (SetSortColumn::Missing, vec!["alpha", "beta", "Alpha"]),
+            (
+                SetSortColumn::MissingInArchive,
+                vec!["alpha", "Alpha", "beta"],
+            ),
+            (SetSortColumn::NoDump, vec!["alpha", "beta", "Alpha"]),
+        ] {
+            let mut rows = original.clone();
+            sort_set_rows(
+                &mut rows,
+                SetSortState(Some((column, SortDirection::Ascending))),
+            );
+            assert_eq!(
+                rows.iter().map(|row| row.name.as_str()).collect::<Vec<_>>(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn set_sort_helper_descends_and_unsorted_preserves_input_exactly() {
+        let original = vec![
+            sort_row("first", "Same", [Some(1); 4]),
+            sort_row("second", "Same", [Some(3); 4]),
+            sort_row("third", "Same", [Some(2); 4]),
+        ];
+        let mut rows = original.clone();
+        sort_set_rows(
+            &mut rows,
+            SetSortState(Some((SetSortColumn::Present, SortDirection::Descending))),
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.name.as_str()).collect::<Vec<_>>(),
+            vec!["second", "third", "first"]
+        );
+
+        let mut unsorted = original.clone();
+        sort_set_rows(&mut unsorted, SetSortState::default());
+        assert_eq!(unsorted, original);
+    }
 
     #[test]
     fn english_locale_contains_every_gui_and_status_key_used_by_gui() {
