@@ -10,6 +10,7 @@ labels: []
 
 ## Requirements
 
+- Decided rules are already written in `docs/REQUIREMENTS.md` (and `docs/GUI_WIREFRAMES.md` if the UI changed). This issue does not invent spec that is missing from those files.
 - See `docs/REQUIREMENTS.md`
 - <!-- Extra constraints, file paths, CLI/GUI notes -->
 

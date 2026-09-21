@@ -24,9 +24,10 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 | File   Scan   Verify   Settings   Report   Organize (disabled)                                 |
 +----------------------------------+-------------------------------------------------------------+
 | Sources (DAT + collection)       | Sets                                                        |
-| v No-Intro Example (12/340)       | Name              Status      Present Missing …             |
-|     [header / groups as tree]    | Example Game      Complete          2       0               |
-| v TOSEC Example                  | Example Game 2    Incomplete        1       1               |
+| v DATs                            | Name              Status      Present Missing …             |
+|     No-Intro Example (12/340)     | Example Game      Complete          2       0               |
+|   v Nintendo                     | Example Game 2    Incomplete        1       1               |
+|       NES (10/100)               |                                                             |
 |     ...                          |                                                             |
 | (empty: dat_missing_config)      | Select a DAT in the tree to list its sets.                  |
 |<------ draggable horizontal ---->|<---------------- draggable horizontal -------------------->|
@@ -55,10 +56,10 @@ The center `|` is one full-height draggable vertical splitter across the four-pa
 
 ### Top-left: configured DATs (tree)
 
-- Tree of recognized / configured sources from YAML `sources` (same as Settings): each node is a DAT plus its collection directory. This is not a collection-folder tree.
-- Source titles use `{name} ({found}/{total})`, for example `No-Intro Example (12/340)`. The name is the DAT header name, or the DAT path when the header has no name. Found is `0` until Verify has run for that source, then counts `Present` DAT ROMs; total includes all DAT ROMs, including `nodump`. A DAT that failed to load shows only its name or path because no real total is available.
-- Nodes may group header name (and later subgroups if a DAT supplies them); exact grouping below the DAT is not required for this wireframe slice.
-- Selecting a DAT fills the top-right set list from that DAT (names). It does **not** start a scan or a match.
+- Tree of YAML `sources`, nested by each resolved `dat` **file path**: folder nodes plus DAT leaves. This is not a ROM collection explorer and not a DAT-content (parent/clone / header group) tree.
+- A directory may contain both DAT files and subfolders of DAT files. Unrelated path roots appear as sibling roots. Do not show empty directories that are not a prefix of a configured `dat` path.
+- DAT **leaves** use `{name} ({found}/{total})`, for example `No-Intro Example (12/340)`. The name is the DAT header name, or the DAT path when the header has no name. Found is `0` until Verify has run for that source, then counts `Present` DAT ROMs; total includes all DAT ROMs, including `nodump`. A DAT that failed to load shows only its name or path because no real total is available. Folder rows have no count.
+- Selecting a DAT **leaf** fills the top-right set list from that DAT (names). Folder rows only expand or collapse. Selection does **not** start a scan or a match. DAT folders are not re-scanned on launch; only Settings bulk-add walks disk, when the user asks.
 - Empty state: localized CLI `dat_missing_config` in this pane, with a way to open Settings. No DAT downloaders or bundled DAT files.
 
 ### Bottom-left: external media (later placeholder)
@@ -77,6 +78,7 @@ The center `|` is one full-height draggable vertical splitter across the four-pa
   - **Counts for each status** on that set: at least Present, Missing, MissingInArchive, and nodump (ROM-side). Extra is not a set-row count.
 - A left-click on a column header sorts its rows. Repeated clicks on the same header cycle ascending, descending, and the exact original DAT row order; clicking another header starts ascending. Name uses case-sensitive lexicographic order, Status uses its displayed text (including `Not verified`), and counts use numeric order. Blank unverified counts are missing values and precede every number when ascending. This sort state lasts for the current session and does not start Scan or Verify.
 - Empty state: `Select a DAT in the tree to list its sets.`
+- A left-click on a column header sorts its rows. Repeated clicks on the same header cycle ascending, descending, and the exact original DAT row order; clicking another header starts ascending. Name uses case-sensitive lexicographic order, Status uses its displayed text (including `Not verified`), and counts use numeric order. Blank unverified counts are missing values and precede every number when ascending. This sort state lasts for the current session and does not start Scan or Verify.
 - With a DAT selected but Verify not yet run: keep the pane with set names if they can be listed from the DAT alone, or an empty table plus `Run Verify to see statuses.` Do not navigate to another screen.
 
 ### Bottom-right: set members
@@ -156,7 +158,7 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 - Locale selector with `en` and `ja`; English is the default.
 - Editable `cache_path` with Browse.
 - Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative. This list is the source of the primary-window DAT tree.
-- Bulk add has folder pickers for a DAT folder and collections parent. It loads non-recursive `.dat`/`.xml` files, appends one source per readable DAT, derives the child collection folder from the DAT header name (file stem fallback), skips duplicate DAT paths, and reports individual failures while continuing. It does not create collection directories.
+- Bulk add has folder pickers for a DAT folder and collections parent. It **recurses** for `.dat`/`.xml` files, appends one source per readable DAT, and sets collection to `{collections parent}/{relative DAT directory}/{sanitized header name}` (file stem fallback). Each path segment uses the Windows-illegal character sanitizer. Duplicate DAT paths are skipped. Derived collection collisions and unreadable DATs are reported without discarding other additions. It does not create collection directories. The last folder picks are not saved in YAML.
 - Save writes settings to YAML only; scan records and hashes remain in the cache.
 - If YAML is missing, Save creates it with the currently displayed settings (including defaults). If it exists, loading preserves its values and Save updates that same file only in response to the explicit Save action; automatic create-if-missing behavior never overwrites existing YAML.
 - Missing DAT paths and invalid or unwritable settings appear inline; missing DATs are warnings so other valid settings can still be saved.

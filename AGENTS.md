@@ -15,7 +15,7 @@ Sync only through `origin` (`git fetch` / `git pull` / PR). Launch Codex with `-
 
 ## Delivery flow (required)
 
-Product code is **not** written in the Cursor clone. Cursor may draft issues, review PRs, run tests, and change **process/spec docs** only (this file, `docs/REQUIREMENTS.md`, GitHub templates). Implementation, tests in crates, and Codex-labeled PRs come from Codex.
+Product code is **not** written in the Cursor clone. Cursor may draft issues, review PRs, run tests, and change **process/spec docs** only (this file, `docs/REQUIREMENTS.md`, `docs/GUI_WIREFRAMES.md`, GitHub templates). When a product rule is decided, write it into `docs/REQUIREMENTS.md` **before** or with the issue. Implementation, tests in crates, and Codex-labeled PRs come from Codex.
 
 ```text
 Issue (Cursor/human) → Codex implements + PR → Cursor tests + reviews → report to human → Cursor merges on accept
@@ -23,7 +23,7 @@ Issue (Cursor/human) → Codex implements + PR → Cursor tests + reviews → re
 
 ### 1. Issue first
 
-- Open a GitHub issue **before** implementation. Use `.github/ISSUE_TEMPLATE/codex-task.md`.
+- **Update [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) first** (and [docs/GUI_WIREFRAMES.md](docs/GUI_WIREFRAMES.md) if layout changes) with the decided rule. Chat is not the spec. Then open a GitHub issue. Use `.github/ISSUE_TEMPLATE/codex-task.md`.
 - One primary issue per change. Acceptance criteria must be testable.
 - Point at [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md). Do not start coding from chat alone.
 - Cursor must **not** implement the issue in `C:\Users\shira\yaRomChecker` (no feature commits, no “quick fix” in core/cli/gui).
