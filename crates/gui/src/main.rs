@@ -204,6 +204,8 @@ struct App {
     scan_summary: Option<ScanSummary>,
     dat_summary: Option<DatSummary>,
     notice: Option<String>,
+    bulk_dat_folder: PathBuf,
+    bulk_collection_parent: PathBuf,
 }
 
 impl App {
@@ -233,6 +235,8 @@ impl App {
             scan_summary: None,
             dat_summary: None,
             notice: None,
+            bulk_dat_folder: PathBuf::new(),
+            bulk_collection_parent: PathBuf::new(),
         };
         app.reload_dats();
         Ok(app)
@@ -802,6 +806,54 @@ impl App {
         );
         ui.separator();
         ui.heading(self.messages.text("gui_sources_settings"));
+        ui.group(|ui| {
+            ui.label(self.messages.text("gui_bulk_add_heading"));
+            path_row(
+                ui,
+                self.messages.text("gui_bulk_dat_folder"),
+                &mut self.bulk_dat_folder,
+                PathPicker::Folder,
+                self.messages.text("gui_browse"),
+            );
+            path_row(
+                ui,
+                self.messages.text("gui_bulk_collection_parent"),
+                &mut self.bulk_collection_parent,
+                PathPicker::Folder,
+                self.messages.text("gui_browse"),
+            );
+            if ui.button(self.messages.text("gui_bulk_add")).clicked() {
+                match bulk_add_sources(
+                    &self.bulk_dat_folder,
+                    &self.bulk_collection_parent,
+                    &self.settings.sources,
+                ) {
+                    Ok(result) => {
+                        let added = result.sources.len();
+                        self.settings.sources.extend(result.sources);
+                        let mut notice = self.messages.format(
+                            "gui_bulk_add_summary",
+                            &[
+                                ("added", added.to_string()),
+                                ("skipped", result.skipped.to_string()),
+                                ("errors", result.errors.len().to_string()),
+                            ],
+                        );
+                        for error in result.errors {
+                            notice.push('\n');
+                            notice.push_str(&error);
+                        }
+                        self.notice = Some(notice);
+                    }
+                    Err(error) => {
+                        self.notice = Some(
+                            self.messages
+                                .format("gui_bulk_add_error", &[("error", error.to_string())]),
+                        );
+                    }
+                }
+            }
+        });
         let mut remove = None;
         for (index, source) in self.settings.sources.iter_mut().enumerate() {
             ui.group(|ui| {
@@ -1057,6 +1109,80 @@ fn path_row(ui: &mut egui::Ui, label: &str, path: &mut PathBuf, picker: PathPick
     });
 }
 
+#[derive(Debug, Default)]
+struct BulkAddResult {
+    sources: Vec<Source>,
+    skipped: usize,
+    errors: Vec<String>,
+}
+
+fn bulk_add_sources(
+    dat_folder: &Path,
+    collection_parent: &Path,
+    existing: &[Source],
+) -> Result<BulkAddResult> {
+    let mut paths = fs::read_dir(dat_folder)
+        .with_context(|| format!("Cannot read DAT folder {}", dat_folder.display()))?
+        .filter_map(|entry| match entry {
+            Ok(entry) => {
+                let path = entry.path();
+                let supported = path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| {
+                        extension.eq_ignore_ascii_case("dat")
+                            || extension.eq_ignore_ascii_case("xml")
+                    });
+                supported.then_some(Ok(path))
+            }
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    paths.sort();
+
+    let mut result = BulkAddResult::default();
+    let mut known: HashSet<PathBuf> = existing.iter().map(|source| source.dat.clone()).collect();
+    for path in paths {
+        if !known.insert(path.clone()) {
+            result.skipped += 1;
+            continue;
+        }
+        match DatFile::load(&path) {
+            Ok(dat) => result.sources.push(source_from_dat(
+                path,
+                collection_parent,
+                dat.header.name.as_deref(),
+            )),
+            Err(error) => result.errors.push(format!("{}: {error}", path.display())),
+        }
+    }
+    Ok(result)
+}
+
+fn source_from_dat(dat: PathBuf, collection_parent: &Path, header_name: Option<&str>) -> Source {
+    let name = header_name.map(str::to_owned).unwrap_or_else(|| {
+        dat.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    });
+    Source {
+        dat,
+        collection: collection_parent.join(sanitize_folder_name(&name)),
+    }
+}
+
+fn sanitize_folder_name(name: &str) -> String {
+    name.chars()
+        .map(|character| match character {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => character,
+        })
+        .collect::<String>()
+        .trim_end_matches(['.', ' '])
+        .to_owned()
+}
+
 fn set_status(messages: &Messages, status: SetStatus) -> &str {
     match status {
         SetStatus::Complete => messages.text("set_status_complete"),
@@ -1203,5 +1329,60 @@ mod tests {
                 max: 704.0
             }
         );
+    }
+
+    #[test]
+    fn bulk_source_joins_parent_with_sanitized_dat_name() {
+        let source = source_from_dat(
+            PathBuf::from("C:/DATs/example.dat"),
+            Path::new("C:/Collections"),
+            Some("Nintendo (NES): Good Set"),
+        );
+        assert_eq!(
+            source.collection,
+            PathBuf::from("C:/Collections").join("Nintendo (NES)_ Good Set")
+        );
+    }
+
+    #[test]
+    fn folder_name_sanitization_only_replaces_windows_illegal_characters_and_trailing_marks() {
+        assert_eq!(
+            sanitize_folder_name("Keep (these) spaces <bad>:chars.  "),
+            "Keep (these) spaces _bad__chars"
+        );
+    }
+
+    #[test]
+    fn bulk_source_uses_file_stem_when_header_name_is_missing() {
+        let source = source_from_dat(
+            PathBuf::from("C:/DATs/Arcade Set.xml"),
+            Path::new("C:/Collections"),
+            None,
+        );
+        assert_eq!(
+            source.collection,
+            PathBuf::from("C:/Collections").join("Arcade Set")
+        );
+    }
+
+    #[test]
+    fn bulk_add_skips_existing_dat_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let dat_path = temp.path().join("example.dat");
+        fs::write(
+            &dat_path,
+            "clrmamepro ( name \"Example\" )\ngame ( name \"Game\" )",
+        )
+        .unwrap();
+        let existing = vec![Source {
+            dat: dat_path,
+            collection: PathBuf::from("old-collection"),
+        }];
+
+        let result = bulk_add_sources(temp.path(), Path::new("collections"), &existing).unwrap();
+
+        assert!(result.sources.is_empty());
+        assert_eq!(result.skipped, 1);
+        assert!(result.errors.is_empty());
     }
 }

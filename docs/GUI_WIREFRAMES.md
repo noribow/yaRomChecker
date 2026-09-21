@@ -142,6 +142,8 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 | Locale: [en v]    choices: en, ja                                                            |
 | Cache path: [cache.sqlite____________________________________________________] [Browse...]     |
 | DAT and collection sources                                                                    |
+| Bulk DAT folder: [C:\DATs________________] [Browse] Collections parent: [C:\ROMs___] [Browse]|
+| [Add DAT folder]                                                                              |
 | DAT: [C:\DATs\No-Intro.dat____] [Browse] Collection: [C:\ROMs\NES____] [Browse] [Remove]   |
 | DAT: [C:\DATs\TOSEC.dat_______] [Browse] Collection: [C:\ROMs\TOSEC__] [Browse] [Remove]   |
 | [Add source]                                                                                  |
@@ -153,6 +155,7 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 - Locale selector with `en` and `ja`; English is the default.
 - Editable `cache_path` with Browse.
 - Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative. This list is the source of the primary-window DAT tree.
+- Bulk add has folder pickers for a DAT folder and collections parent. It loads non-recursive `.dat`/`.xml` files, appends one source per readable DAT, derives the child collection folder from the DAT header name (file stem fallback), skips duplicate DAT paths, and reports individual failures while continuing. It does not create collection directories.
 - Save writes settings to YAML only; scan records and hashes remain in the cache.
 - If YAML is missing, Save creates it with the currently displayed settings (including defaults). If it exists, loading preserves its values and Save updates that same file only in response to the explicit Save action; automatic create-if-missing behavior never overwrites existing YAML.
 - Missing DAT paths and invalid or unwritable settings appear inline; missing DATs are warnings so other valid settings can still be saved.
