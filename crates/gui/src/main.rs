@@ -928,9 +928,46 @@ impl App {
         if let Some(index) = remove_root {
             self.settings.dat_roots.remove(index);
         }
-        if ui.button(self.messages.text("gui_add_dat_root")).clicked() {
-            self.settings.dat_roots.push(PathBuf::new());
-        }
+        ui.horizontal(|ui| {
+            if ui.button(self.messages.text("gui_add_dat_root")).clicked() {
+                self.settings.dat_roots.push(PathBuf::new());
+            }
+            if ui
+                .button(self.messages.text("gui_check_new_dats"))
+                .clicked()
+            {
+                match check_new_dat_sources(
+                    &self.settings.dat_roots,
+                    &self.bulk_collection_parent,
+                    &self.settings.sources,
+                ) {
+                    Ok(result) => {
+                        let added = result.sources.len();
+                        self.settings.sources.extend(result.sources);
+                        let mut notice = self.messages.format(
+                            "gui_check_new_dats_summary",
+                            &[
+                                ("added", added.to_string()),
+                                ("skipped", result.skipped.to_string()),
+                                ("errors", result.errors.len().to_string()),
+                            ],
+                        );
+                        for error in result.errors {
+                            notice.push('\n');
+                            notice.push_str(&error);
+                        }
+                        self.notice = Some(notice);
+                    }
+                    Err(error) => {
+                        self.notice =
+                            Some(self.messages.format(
+                                "gui_check_new_dats_error",
+                                &[("error", error.to_string())],
+                            ));
+                    }
+                }
+            }
+        });
         ui.separator();
         ui.heading(self.messages.text("gui_sources_settings"));
         ui.group(|ui| {
@@ -1241,6 +1278,42 @@ struct BulkAddResult {
     sources: Vec<Source>,
     skipped: usize,
     errors: Vec<String>,
+}
+
+fn check_new_dat_sources(
+    dat_roots: &[PathBuf],
+    collection_parent: &Path,
+    existing: &[Source],
+) -> Result<BulkAddResult> {
+    if path_is_blank(collection_parent) {
+        anyhow::bail!("Collections parent is required");
+    }
+    let roots = dat_roots
+        .iter()
+        .filter(|root| !path_is_blank(root))
+        .collect::<Vec<_>>();
+    if roots.is_empty() {
+        anyhow::bail!("At least one DAT root is required");
+    }
+
+    let mut result = BulkAddResult::default();
+    let mut known_sources = existing.to_vec();
+    for root in roots {
+        match bulk_add_sources(root, collection_parent, &known_sources) {
+            Ok(root_result) => {
+                result.skipped += root_result.skipped;
+                result.errors.extend(root_result.errors);
+                known_sources.extend(root_result.sources.iter().cloned());
+                result.sources.extend(root_result.sources);
+            }
+            Err(error) => result.errors.push(error.to_string()),
+        }
+    }
+    Ok(result)
+}
+
+fn path_is_blank(path: &Path) -> bool {
+    path.as_os_str().to_string_lossy().trim().is_empty()
 }
 
 fn bulk_add_sources(
@@ -1716,5 +1789,81 @@ mod tests {
         assert_eq!(result.sources.len(), 1);
         assert_eq!(result.errors.len(), 1);
         assert!(result.errors[0].contains("derived collection already exists"));
+    }
+
+    #[test]
+    fn check_new_dats_adds_files_from_multiple_roots_in_root_order() {
+        let temp = tempfile::tempdir().unwrap();
+        let first_root = temp.path().join("first");
+        let second_root = temp.path().join("second");
+        let first_nested = first_root.join("Nintendo");
+        let second_nested = second_root.join("Sega");
+        fs::create_dir_all(&first_nested).unwrap();
+        fs::create_dir_all(&second_nested).unwrap();
+        fs::write(
+            first_nested.join("first.dat"),
+            "clrmamepro ( name \"First\" )\ngame ( name \"Game\" )",
+        )
+        .unwrap();
+        fs::write(
+            second_nested.join("second.xml"),
+            "clrmamepro ( name \"Second\" )\ngame ( name \"Game\" )",
+        )
+        .unwrap();
+
+        let result =
+            check_new_dat_sources(&[first_root, second_root], Path::new("collections"), &[])
+                .unwrap();
+
+        assert_eq!(result.sources.len(), 2);
+        assert_eq!(
+            result.sources[0].collection,
+            Path::new("collections").join("Nintendo").join("First")
+        );
+        assert_eq!(
+            result.sources[1].collection,
+            Path::new("collections").join("Sega").join("Second")
+        );
+    }
+
+    #[test]
+    fn check_new_dats_skips_existing_sources() {
+        let temp = tempfile::tempdir().unwrap();
+        let dat_path = temp.path().join("existing.dat");
+        fs::write(
+            &dat_path,
+            "clrmamepro ( name \"Existing\" )\ngame ( name \"Game\" )",
+        )
+        .unwrap();
+        let existing = vec![Source {
+            dat: dat_path,
+            collection: PathBuf::from("existing-collection"),
+        }];
+
+        let result = check_new_dat_sources(
+            &[temp.path().to_path_buf()],
+            Path::new("collections"),
+            &existing,
+        )
+        .unwrap();
+
+        assert!(result.sources.is_empty());
+        assert_eq!(result.skipped, 1);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn check_new_dats_rejects_empty_collection_parent() {
+        let result = check_new_dat_sources(&[PathBuf::from("dat-root")], Path::new("  "), &[]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn check_new_dats_rejects_empty_or_blank_roots() {
+        for roots in [vec![], vec![PathBuf::new(), PathBuf::from("  ")]] {
+            let result = check_new_dat_sources(&roots, Path::new("collections"), &[]);
+            assert!(result.is_err());
+        }
     }
 }
