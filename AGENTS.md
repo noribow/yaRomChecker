@@ -18,7 +18,7 @@ Sync only through `origin` (`git fetch` / `git pull` / PR). Launch Codex with `-
 Product code is **not** written in the Cursor clone. Cursor may draft issues, review PRs, run tests, and change **process/spec docs** only (this file, `docs/REQUIREMENTS.md`, GitHub templates). Implementation, tests in crates, and Codex-labeled PRs come from Codex.
 
 ```text
-Issue (Cursor/human) → Codex implements + PR → Cursor tests + reviews → report to human → human decides merge
+Issue (Cursor/human) → Codex implements + PR → Cursor tests + reviews → report to human → Cursor merges on accept
 ```
 
 ### 1. Issue first
@@ -46,7 +46,8 @@ As soon as a Codex PR exists (label `codex`, or a PR this session just opened fo
 2. Run at least: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`. Add targeted tests only if the issue’s acceptance criteria are untested **and** then file a follow-up issue for Codex instead of patching the PR yourself.
 3. Review against the issue, REQUIREMENTS, and this file. Probe edge cases, regressions, and policy (no ROM/DAT redistribution). Read the matching/parser code; do not rely on green tests alone.
 4. Post findings on the GitHub PR when they must reach Codex. **Do not push to the Codex branch.**
-5. **Present a review report to the human in chat in the same turn** (required). Do not merge unless the human asked.
+5. **Present a review report to the human in chat in the same turn** (required).
+6. If the verdict is **accept**, **merge the PR in that same turn** (`gh pr merge` into `main`). Do not wait for the human to ask. If the verdict is request changes or blocked, do not merge.
 
 Review report (use these headings):
 
@@ -59,8 +60,9 @@ Review report (use these headings):
 
 ### 4. Merge
 
-- Human (or Cursor **only when the human asked to merge**) merges after an accept verdict.
-- Spec-only PRs from Cursor: no `codex` label. Still use an issue when the change is more than a typo.
+- After an **accept** verdict, Cursor merges immediately (same turn as the review report). The human does not need to ask.
+- Do **not** merge on request changes or blocked.
+- Spec-only PRs from Cursor: no `codex` label. Still use an issue when the change is more than a typo. Merge those on accept as well.
 
 ## Layout (required)
 

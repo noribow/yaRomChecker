@@ -162,12 +162,12 @@ In scope later: media health; copy **from** media into the working collection to
 
 ## Collaboration
 
-Flow is **issue → Codex PR → Cursor review/test report → human merge**. Details: [AGENTS.md](../AGENTS.md).
+Flow is **issue → Codex PR → Cursor review/test report → Cursor merges on accept**. Details: [AGENTS.md](../AGENTS.md).
 
 | Role | Does |
 | --- | --- |
-| Human | Prioritizes work; decides merge after the Cursor report |
-| Cursor | Opens/refines GitHub issues; does **not** implement product code; as soon as a Codex PR exists, fetches it, runs tests, reviews thoroughly, reports in chat, comments on the PR for Codex |
+| Human | Prioritizes work; may still merge or revert |
+| Cursor | Opens/refines GitHub issues; does **not** implement product code; as soon as a Codex PR exists, fetches it, runs tests, reviews thoroughly, reports in chat, comments on the PR for Codex, and **merges on an accept verdict** |
 | Codex | Implements in `C:\Users\shira\yaRomChecker-codex`, tests, PR labeled `codex`, body includes `Fixes #N` |
 | Spec/docs PRs | Cursor or human; **no** `codex` label |
 

@@ -7,6 +7,6 @@ alwaysApply: true
 
 Do **not** implement product code (crates, locales for features, YAML behavior) in this Cursor clone. Open or refine a GitHub issue, then Codex implements in `yaRomChecker-codex` and opens a `codex` PR with `Fixes #N`.
 
-When a Codex PR exists (including one just opened in this session): **immediately** fetch it, run `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings`, review the code against the issue and `docs/REQUIREMENTS.md` (not tests alone), comment on GitHub for Codex, and **present a review report in chat in the same turn**. Do not wait for the human to ask. Do not push to the Codex branch. Do not merge unless the human asked.
+When a Codex PR exists (including one just opened in this session): **immediately** fetch it, run `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings`, review the code against the issue and `docs/REQUIREMENTS.md` (not tests alone), comment on GitHub for Codex, and **present a review report in chat in the same turn**. Do not wait for the human to ask. Do not push to the Codex branch. **If the verdict is accept, merge the PR in that same turn.** Do not merge on request changes or blocked.
 
 Full text: `AGENTS.md`. Spec/process doc edits in this clone are allowed.
