@@ -125,6 +125,7 @@ In scope later: media health; copy **from** media into the working collection to
 - Set-list columns: name, set status, and a count for each status on that set. Inner-file columns: name, size, mtime, hashes, last-checked date.
 - Matching (verify) runs only when the user asks (menu Verify, or equivalent). Selecting a DAT or set does not start a match.
 - The DAT tree lists YAML `sources` (each node is a DAT plus its collection directory), not a collection-folder tree. With none configured, show the localized CLI `dat_missing_config` message and a path to Settings.
+- Each source title is `{name} ({found}/{total})`, using the DAT header name when present and the DAT path otherwise. `total` includes every DAT ROM, including `nodump`; `found` is zero until that source has been verified, then counts ROMs with `Present` status. If the DAT cannot be loaded and no total is known, show only its name or path.
 - A persistent status bar shows the selected source's collection directory (or `No source selected`), the last scan summary (entry, hashed-container, and reused-container counts), the selected locale, and the resolved configuration path. The configuration path is read-only.
 
 **Scan**
@@ -142,6 +143,7 @@ In scope later: media health; copy **from** media into the working collection to
 **DAT display**
 
 - DAT / Verify is not a separate full page. Selecting a source lists that DAT's sets; status and counts appear after the user runs Verify. Matching is per source. The bottom-right pane lists member files when the selected set is not a single loose file.
+- The top-left source title uses ASCII parentheses and slash with no spaces inside the count: for example, `No-Intro Example (12/340)`.
 - DAT downloads, download links, and DAT editing are omitted. MAME/arcade completeness, Redump multi-file sets, CHD, and parent/clone grouping remain later work.
 
 **Settings**

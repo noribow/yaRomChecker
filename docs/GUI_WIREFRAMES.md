@@ -24,7 +24,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 | File   Scan   Verify   Settings   Report   Organize (disabled)                                 |
 +----------------------------------+-------------------------------------------------------------+
 | Sources (DAT + collection)       | Sets                                                        |
-| v No-Intro Example  C:\ROMs\NES  | Name              Status      Present Missing …             |
+| v No-Intro Example (12/340)       | Name              Status      Present Missing …             |
 |     [header / groups as tree]    | Example Game      Complete          2       0               |
 | v TOSEC Example                  | Example Game 2    Incomplete        1       1               |
 |     ...                          |                                                             |
@@ -54,6 +54,7 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 ### Top-left: configured DATs (tree)
 
 - Tree of recognized / configured sources from YAML `sources` (same as Settings): each node is a DAT plus its collection directory. This is not a collection-folder tree.
+- Source titles use `{name} ({found}/{total})`, for example `No-Intro Example (12/340)`. The name is the DAT header name, or the DAT path when the header has no name. Found is `0` until Verify has run for that source, then counts `Present` DAT ROMs; total includes all DAT ROMs, including `nodump`. A DAT that failed to load shows only its name or path because no real total is available.
 - Nodes may group header name (and later subgroups if a DAT supplies them); exact grouping below the DAT is not required for this wireframe slice.
 - Selecting a DAT fills the top-right set list from that DAT (names). It does **not** start a scan or a match.
 - Empty state: localized CLI `dat_missing_config` in this pane, with a way to open Settings. No DAT downloaders or bundled DAT files.
