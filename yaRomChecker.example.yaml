@@ -1,4 +1,5 @@
 locale: en
 cache_path: yaRomChecker-cache.sqlite3
+dat_roots: []
 sources: []
 
