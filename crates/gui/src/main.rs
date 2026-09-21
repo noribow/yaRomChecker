@@ -20,6 +20,28 @@ use yaromchecker_gui::{dat_member_rows, set_count_text, should_show_member_pane,
 const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
 const JA_MESSAGES: &str = include_str!("../../../locales/ja.yaml");
+const DEFAULT_LEFT_FRACTION: f32 = 0.34;
+const DEFAULT_TOP_FRACTION: f32 = 0.55;
+const MIN_PANE_WIDTH: f32 = 160.0;
+const MIN_PANE_HEIGHT: f32 = 96.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SplitRange {
+    default: f32,
+    min: f32,
+    max: f32,
+}
+
+impl SplitRange {
+    fn new(available: f32, default_fraction: f32, minimum: f32) -> Self {
+        let max = (available - minimum).max(minimum);
+        Self {
+            default: (available * default_fraction).clamp(minimum, max),
+            min: minimum,
+            max,
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(
@@ -725,25 +747,33 @@ impl App {
     }
 
     fn main_surface(&mut self, ui: &mut egui::Ui) {
-        let available = ui.available_size();
-        let left = (available.x * 0.34).max(260.0);
-        let top = available.y * 0.55;
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(left);
-                ui.allocate_ui(egui::vec2(left, top), |ui| self.sources_pane(ui));
-                ui.separator();
+        let horizontal =
+            SplitRange::new(ui.available_width(), DEFAULT_LEFT_FRACTION, MIN_PANE_WIDTH);
+        egui::SidePanel::left("main_left_column")
+            .resizable(true)
+            .default_width(horizontal.default)
+            .width_range(horizontal.min..=horizontal.max)
+            .show_inside(ui, |ui| {
+                let vertical =
+                    SplitRange::new(ui.available_height(), DEFAULT_TOP_FRACTION, MIN_PANE_HEIGHT);
+                egui::TopBottomPanel::top("main_sources_pane")
+                    .resizable(true)
+                    .default_height(vertical.default)
+                    .height_range(vertical.min..=vertical.max)
+                    .show_inside(ui, |ui| self.sources_pane(ui));
                 ui.heading(self.messages.text("gui_external_media"));
                 ui.label(self.messages.text("gui_external_media_help"));
             });
-            ui.separator();
-            ui.vertical(|ui| {
-                ui.allocate_ui(egui::vec2(ui.available_width(), top), |ui| {
-                    self.sets_pane(ui)
-                });
-                ui.separator();
-                self.members_pane(ui);
-            });
+
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            let vertical =
+                SplitRange::new(ui.available_height(), DEFAULT_TOP_FRACTION, MIN_PANE_HEIGHT);
+            egui::TopBottomPanel::top("main_sets_pane")
+                .resizable(true)
+                .default_height(vertical.default)
+                .height_range(vertical.min..=vertical.max)
+                .show_inside(ui, |ui| self.sets_pane(ui));
+            self.members_pane(ui);
         });
     }
 
@@ -1150,5 +1180,28 @@ mod tests {
         let line = summary.line(&messages);
         assert!(line.contains("Missing: 2"));
         assert!(line.contains("MissingInArchive: 3"));
+    }
+
+    #[test]
+    fn splitter_ranges_use_defaults_and_keep_both_panes_visible() {
+        let horizontal = SplitRange::new(1_000.0, DEFAULT_LEFT_FRACTION, MIN_PANE_WIDTH);
+        assert_eq!(
+            horizontal,
+            SplitRange {
+                default: 340.0,
+                min: 160.0,
+                max: 840.0
+            }
+        );
+
+        let vertical = SplitRange::new(800.0, DEFAULT_TOP_FRACTION, MIN_PANE_HEIGHT);
+        assert_eq!(
+            vertical,
+            SplitRange {
+                default: 440.0,
+                min: 96.0,
+                max: 704.0
+            }
+        );
     }
 }

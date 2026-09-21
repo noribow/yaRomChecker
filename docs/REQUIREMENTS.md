@@ -121,7 +121,7 @@ In scope later: media health; copy **from** media into the working collection to
 **Primary window**
 
 - Top: a menu bar (Scan, Verify, Settings, Report; Organize visible and disabled). No Main / Scan / DAT / Verify tab strip.
-- Four panes: top-left configured sources as a tree; bottom-left external media (later placeholder); top-right sets for the selected DAT; bottom-right members of the selected set when it is not a single loose file.
+- Four panes: top-left configured sources as a tree; bottom-left external media (later placeholder); top-right sets for the selected DAT; bottom-right members of the selected set when it is not a single loose file. A draggable full-height vertical splitter divides the left and right columns. Each column has its own draggable horizontal splitter, and every pane retains a small minimum size. Splitter positions persist for the current session only.
 - Set-list columns: name, set status, and a count for each status on that set. Inner-file columns: name, size, mtime, hashes, last-checked date.
 - Matching (verify) runs only when the user asks (menu Verify, or equivalent). Selecting a DAT or set does not start a match.
 - The DAT tree lists YAML `sources` (each node is a DAT plus its collection directory), not a collection-folder tree. With none configured, show the localized CLI `dat_missing_config` message and a path to Settings.
