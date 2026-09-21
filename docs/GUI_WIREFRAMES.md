@@ -60,7 +60,7 @@ The center `|` is one full-height draggable vertical splitter across the four-pa
 - Top-level folders are the configured DAT roots (directory name). A directory may contain both DAT files and subfolders of DAT files. Do not show empty directories that are not a prefix of a configured `dat` path under its root. Do not use drive letters as roots unless the user put that path in `dat_roots`.
 - Sources not under any root (including when `dat_roots` is empty) sit under `Outside DAT roots`, still without `C:` as a root.
 - DAT **leaves** use `{name} ({found}/{total})`, for example `No-Intro Example (12/340)`. The name is the DAT header name, or the DAT path when the header has no name. Found is `0` until Verify has run for that source, then counts `Present` DAT ROMs; total includes all DAT ROMs, including `nodump`. A DAT that failed to load shows only its name or path because no real total is available. Folder rows have no count.
-- Selecting a DAT **leaf** fills the top-right set list from that DAT (names). Folder rows only expand or collapse. Selection does **not** start a scan or a match. DAT folders are not re-scanned on launch; only Settings bulk-add walks disk, when the user asks.
+- Selecting a DAT **leaf** fills the top-right set list from that DAT (names). Folder rows only expand or collapse. Selection does **not** start a scan or a match. DAT folders are not re-scanned on launch; Settings **Check for new DATs** or bulk-add walks disk when the user asks.
 - Empty state: localized CLI `dat_missing_config` in this pane, with a way to open Settings. No DAT downloaders or bundled DAT files.
 
 ### Bottom-left: external media (later placeholder)
@@ -147,7 +147,7 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 | Cache path: [cache.sqlite____________________________________________________] [Browse...]     |
 | DAT roots (Sources tree)                                                                      |
 | Root: [C:\DATs________________] [Browse] [Remove]                                             |
-| [Add DAT root]                                                                                |
+| [Add DAT root]  [Check for new DATs]                                                          |
 | DAT and collection sources                                                                    |
 | Bulk DAT folder: [C:\DATs________________] [Browse] Collections parent: [C:\ROMs___] [Browse]|
 | [Add DAT folder]                                                                              |
@@ -161,7 +161,7 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 - Read-only resolved configuration-file path.
 - Locale selector with `en` and `ja`; English is the default.
 - Editable `cache_path` with Browse.
-- Ordered `dat_roots` directory list with Add, Remove, and Browse. Roots are YAML; they do not scan disk by themselves.
+- Ordered `dat_roots` directory list with Add, Remove, and Browse. Roots are YAML; they do not scan disk by themselves. **Check for new DATs** recurses every configured root using the same skip/error/collection rules as bulk add; relative paths are from each root; collections parent is the bulk-add collections-parent field on this screen.
 - Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative. The primary-window tree places these rows under `dat_roots`.
 - Bulk add has folder pickers for a DAT folder and collections parent. It **recurses** for `.dat`/`.xml` files, appends one source per readable DAT, and sets collection to `{collections parent}/{relative DAT directory}/{sanitized header name}` (file stem fallback). Each path segment uses the Windows-illegal character sanitizer. Duplicate DAT paths are skipped. Derived collection collisions and unreadable DATs are reported without discarding other additions. It does not create collection directories. The last folder picks are not saved in YAML.
 - Save writes settings to YAML only; scan records and hashes remain in the cache.

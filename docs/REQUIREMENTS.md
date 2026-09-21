@@ -166,7 +166,7 @@ Design: Markdown/chat wireframes first, then egui. No Figma. Native Win32 stylin
 - Do not invent directories that are not a prefix of a configured `dat` path under its assigned root. Empty folders on disk are omitted.
 - Expand/collapse is session-only; not YAML.
 - Empty `sources`: localized `dat_missing_config` and a way to open Settings. No tree.
-- Do **not** walk DAT folders on startup, on paint, or on selection. Disk recursion happens only when the user bulk-adds (or later, an explicit “reload from folder” action).
+- Do **not** walk DAT folders on startup, on paint, or on selection. Disk recursion happens only when the user bulk-adds or clicks **Check for new DATs**.
 
 ### Top-right: Sets
 
@@ -196,6 +196,7 @@ Explicit user action only. Selected source, or all sources if the user chooses t
 
 - Read-only resolved config path. Locale `en` / `ja`. Editable `cache_path` with Browse.
 - Ordered `dat_roots` list: directory paths with Add, Remove, and Browse. This is how the user names the Sources-tree roots. Adding a root does not add `sources` rows and does not scan disk.
+- **Check for new DATs** (Settings, next to DAT roots): user-initiated only. Recurse every non-empty configured `dat_roots` directory (YAML order) for `*.dat` / `*.xml` with the same rules as bulk add. Relative collection segments are from **that root**. Collections parent is the Settings bulk-add collections-parent field (required for this action; if empty, show an error and add nothing). Skip DAT paths already in `sources`. Collection collisions and unreadable files are per-DAT errors; keep other additions. Does not create directories. Does not scan on launch or when adding a root. Does not persist the collections-parent path in YAML. Results appear in `settings.sources` until Save.
 - Ordered `sources` table: DAT path, collection path, Add, Remove, Browse. Manual add does **not** rewrite collection from DAT folders; the left tree still nests those rows under `dat_roots`.
 - **Bulk add** (user-initiated): recurse the chosen DAT folder for non-directory `*.dat` / `*.xml` (extension case-insensitive). Append after existing rows. Sort new files by relative path. Skip DAT paths already in `sources` and count skips. Per-file load errors are listed; keep successful rows. Collection path: `{collections parent}/{relative directory from the DAT folder}/{sanitized header name}` (file stem if no name). Sanitize **each path segment** with Windows-illegal characters `<>:"/\\|?*` and trailing dots/spaces. Do **not** create directories. If the derived collection collides with an existing row or another row in the same batch, skip that DAT, report an error, continue. Do not persist the last DAT-folder / collections-parent pick in YAML.
 - Save writes `locale`, `cache_path`, `dat_roots`, and `sources` only.
