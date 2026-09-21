@@ -159,30 +159,34 @@ While hashing those unique collections (`yarc scan`, `quick`, `full`, and the sc
 
 **Default** (no `--verbose`): when a collection starts, print its resolved collection path. Do not print per-file or inner-archive counts. Parallel hashing may stay enabled.
 
-**`--verbose` / `-v`:** while that collection runs, show all of:
+**`--verbose` / `-v`:** two stderr parts. Do **not** put the collection path on the updating line; that line shows the current file **name** (basename), not the collection.
 
-| Field | Meaning |
+1. When the collection starts, print its resolved path (same as default), then a newline.
+2. Then **one** status line, ASCII English, rewritten from column 0 with a carriage return and **no newline** on each update (TTY and non-TTY):
+
+```text
+Read File ({n}/{total}): ({inner_n}/{inner_total}): {name}
+```
+
+| Token | Meaning |
 | --- | --- |
-| Collection | The same resolved collection path as default |
-| Target files | Count of **container** files under that collection (same WalkDir as the scan: regular files, including ZIP/7z containers; not directories, not inner members) |
-| Files read | Containers finished (hashed or cache-reused) in this collection |
-| Current file | The container now being checked or hashed (name, or path relative to the collection) |
-| Archive inners | Only while that current container is ZIP or 7z (same extension rules as hashing): non-directory inner member **total** and how many of those have been hashed in this pass |
+| `{n}` | 1-based index of the container now being hashed or reused |
+| `{total}` | Container file count under that collection (same WalkDir as the scan: regular files, including ZIP/7z; not directories, not inner members) |
+| `{inner_n}` / `{inner_total}` | ZIP/7z non-directory members hashed this pass and member total (same extension rules as hashing). Loose files and unknown inner totals: `0/0`. Quick-reused archive: both numbers from cache rows (`inner_n` = `inner_total`) |
+| `{name}` | Current container **file name** only (not the collection path, not a full relative path) |
 
-Quick reuse of an archive counts the container as read; inner totals may come from the reused cache rows (read = total). Do not extract archives to disk.
+Example: `Read File (3/100): (5/20): game.zip`
 
-Verbose hashing is **one container at a time** so the current file and inner counts are accurate. If stderr is a TTY, overwrite **one** status line (carriage return). If it is not a TTY, print a new line when the current **container** changes (not on every inner member). After each collection, end with a newline so the next collection or stdout summary is distinct.
+Quick reuse of an archive counts that container in `{n}`. Do not extract archives to disk. Verbose hashing is **one container at a time**. After each collection, print a newline so the next collection or stdout summary starts on a new line.
 
 English locale strings. YAML does not store verbose.
 
 ```mermaid
 flowchart TB
   col["Start unique collection"]
-  def["Default stderr: collection path"]
-  verb["Verbose stderr: collection + container total/done + current file"]
-  arch["If ZIP/7z: inner total/done"]
-  col --> def
-  col --> verb --> arch
+  path["stderr newline: collection path"]
+  line["CR overwrite, no NL: Read File n/total inner name"]
+  col --> path --> line
 ```
 
 ## GUI
