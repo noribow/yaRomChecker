@@ -66,6 +66,8 @@ struct Config {
     #[serde(default)]
     dat_roots: Vec<PathBuf>,
     #[serde(default)]
+    collection_root: PathBuf,
+    #[serde(default)]
     sources: Vec<Source>,
 }
 
@@ -268,7 +270,6 @@ struct App {
     dat_summary: Option<DatSummary>,
     notice: Option<String>,
     bulk_dat_folder: PathBuf,
-    bulk_collection_parent: PathBuf,
 }
 
 impl App {
@@ -300,7 +301,6 @@ impl App {
             dat_summary: None,
             notice: None,
             bulk_dat_folder: PathBuf::new(),
-            bulk_collection_parent: PathBuf::new(),
         };
         app.reload_dats();
         Ok(app)
@@ -908,6 +908,13 @@ impl App {
             PathPicker::SaveFile,
             self.messages.text("gui_browse"),
         );
+        path_row(
+            ui,
+            self.messages.text("gui_collection_root"),
+            &mut self.settings.collection_root,
+            PathPicker::Folder,
+            self.messages.text("gui_browse"),
+        );
         ui.separator();
         ui.heading(self.messages.text("gui_dat_roots"));
         let mut remove_root = None;
@@ -938,7 +945,7 @@ impl App {
             {
                 match check_new_dat_sources(
                     &self.settings.dat_roots,
-                    &self.bulk_collection_parent,
+                    &self.settings.collection_root,
                     &self.settings.sources,
                 ) {
                     Ok(result) => {
@@ -979,17 +986,10 @@ impl App {
                 PathPicker::Folder,
                 self.messages.text("gui_browse"),
             );
-            path_row(
-                ui,
-                self.messages.text("gui_bulk_collection_parent"),
-                &mut self.bulk_collection_parent,
-                PathPicker::Folder,
-                self.messages.text("gui_browse"),
-            );
             if ui.button(self.messages.text("gui_bulk_add")).clicked() {
                 match bulk_add_sources(
                     &self.bulk_dat_folder,
-                    &self.bulk_collection_parent,
+                    &self.settings.collection_root,
                     &self.settings.sources,
                 ) {
                     Ok(result) => {
@@ -1282,11 +1282,11 @@ struct BulkAddResult {
 
 fn check_new_dat_sources(
     dat_roots: &[PathBuf],
-    collection_parent: &Path,
+    collection_root: &Path,
     existing: &[Source],
 ) -> Result<BulkAddResult> {
-    if path_is_blank(collection_parent) {
-        anyhow::bail!("Collections parent is required");
+    if path_is_blank(collection_root) {
+        anyhow::bail!("Collection root is required");
     }
     let roots = dat_roots
         .iter()
@@ -1299,7 +1299,7 @@ fn check_new_dat_sources(
     let mut result = BulkAddResult::default();
     let mut known_sources = existing.to_vec();
     for root in roots {
-        match bulk_add_sources(root, collection_parent, &known_sources) {
+        match bulk_add_sources(root, collection_root, &known_sources) {
             Ok(root_result) => {
                 result.skipped += root_result.skipped;
                 result.errors.extend(root_result.errors);
@@ -1318,9 +1318,12 @@ fn path_is_blank(path: &Path) -> bool {
 
 fn bulk_add_sources(
     dat_folder: &Path,
-    collection_parent: &Path,
+    collection_root: &Path,
     existing: &[Source],
 ) -> Result<BulkAddResult> {
+    if path_is_blank(collection_root) {
+        anyhow::bail!("Collection root is required");
+    }
     let mut paths = Vec::new();
     collect_dat_paths(dat_folder, &mut paths)?;
     paths.sort();
@@ -1344,7 +1347,7 @@ fn bulk_add_sources(
                 let source = source_from_dat(
                     path.clone(),
                     dat_folder,
-                    collection_parent,
+                    collection_root,
                     dat.header.name.as_deref(),
                 );
                 if collections.insert(comparable_path(&source.collection)) {
@@ -1391,7 +1394,7 @@ fn comparable_path(path: &Path) -> PathBuf {
 fn source_from_dat(
     dat: PathBuf,
     dat_folder: &Path,
-    collection_parent: &Path,
+    collection_root: &Path,
     header_name: Option<&str>,
 ) -> Source {
     let name = header_name.map(str::to_owned).unwrap_or_else(|| {
@@ -1400,7 +1403,7 @@ fn source_from_dat(
             .to_string_lossy()
             .into_owned()
     });
-    let mut collection = collection_parent.to_path_buf();
+    let mut collection = collection_root.to_path_buf();
     if let Some(relative_parent) = dat
         .parent()
         .and_then(|parent| parent.strip_prefix(dat_folder).ok())
@@ -1619,9 +1622,9 @@ mod tests {
     }
 
     #[test]
-    fn config_round_trip_preserves_ordered_dat_roots() {
+    fn config_round_trip_preserves_dat_and_collection_roots() {
         let config: Config = serde_yml::from_str(
-            "locale: en\ncache_path: cache.sqlite3\ndat_roots:\n  - root-a\n  - root-b\nsources: []\n",
+            "locale: en\ncache_path: cache.sqlite3\ndat_roots:\n  - root-a\n  - root-b\ncollection_root: collections\nsources: []\n",
         )
         .unwrap();
         assert_eq!(
@@ -1632,7 +1635,9 @@ mod tests {
         let saved = serde_yml::to_string(&config).unwrap();
         let reloaded: Config = serde_yml::from_str(&saved).unwrap();
         assert_eq!(reloaded.dat_roots, config.dat_roots);
+        assert_eq!(reloaded.collection_root, PathBuf::from("collections"));
         assert!(saved.contains("dat_roots:"));
+        assert!(saved.contains("collection_root: collections"));
     }
 
     #[test]
@@ -1756,6 +1761,24 @@ mod tests {
     }
 
     #[test]
+    fn bulk_add_dat_in_chosen_root_has_no_relative_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("example.dat"),
+            "clrmamepro ( name \"Root Set\" )\ngame ( name \"Game\" )",
+        )
+        .unwrap();
+
+        let result = bulk_add_sources(temp.path(), Path::new("collections"), &[]).unwrap();
+
+        assert_eq!(result.sources.len(), 1);
+        assert_eq!(
+            result.sources[0].collection,
+            Path::new("collections").join("Root Set")
+        );
+    }
+
+    #[test]
     fn bulk_source_sanitizes_each_relative_directory_segment() {
         let source = source_from_dat(
             PathBuf::from("root/Bad<dir/Other:dir/example.dat"),
@@ -1853,8 +1876,22 @@ mod tests {
     }
 
     #[test]
-    fn check_new_dats_rejects_empty_collection_parent() {
+    fn check_new_dats_rejects_empty_collection_root() {
         let result = check_new_dat_sources(&[PathBuf::from("dat-root")], Path::new("  "), &[]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bulk_add_rejects_empty_collection_root_without_adding_sources() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("example.dat"),
+            "clrmamepro ( name \"Example\" )\ngame ( name \"Game\" )",
+        )
+        .unwrap();
+
+        let result = bulk_add_sources(temp.path(), Path::new("  "), &[]);
 
         assert!(result.is_err());
     }

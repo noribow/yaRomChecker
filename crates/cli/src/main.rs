@@ -43,6 +43,9 @@ struct Config {
     #[allow(dead_code)]
     dat_roots: Vec<PathBuf>,
     #[serde(default)]
+    #[allow(dead_code)]
+    collection_root: PathBuf,
+    #[serde(default)]
     sources: Vec<Source>,
 }
 
@@ -609,7 +612,7 @@ mod tests {
     #[test]
     fn parses_ordered_sources_and_rejects_legacy_dats() {
         let config: Config = serde_yml::from_str(
-            "locale: en\ncache_path: cache.sqlite3\ndat_roots:\n  - root-a\n  - root-b\nsources:\n  - dat: a.dat\n    collection: a\n  - dat: b.dat\n    collection: b\n",
+            "locale: en\ncache_path: cache.sqlite3\ndat_roots:\n  - root-a\n  - root-b\ncollection_root: collections\nsources:\n  - dat: a.dat\n    collection: a\n  - dat: b.dat\n    collection: b\n",
         )
         .unwrap();
         assert_eq!(
@@ -617,6 +620,7 @@ mod tests {
             vec![PathBuf::from("root-a"), PathBuf::from("root-b")]
         );
         assert_eq!(config.sources.len(), 2);
+        assert_eq!(config.collection_root, PathBuf::from("collections"));
         assert_eq!(config.sources[0].dat, PathBuf::from("a.dat"));
         assert_eq!(config.sources[0].collection, PathBuf::from("a"));
 
