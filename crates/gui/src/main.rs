@@ -15,7 +15,7 @@ use yaromchecker_core::{
     DatFile, DatRomStatus, EntryKind, MatchReport, ScanCache, ScanEntry, ScanMode, ScanReport,
     Scanner, SetStatus, match_collection,
 };
-use yaromchecker_gui::{dat_member_rows, set_count_text, should_show_member_pane};
+use yaromchecker_gui::{dat_member_rows, set_count_text, should_show_member_pane, source_title};
 
 const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -444,13 +444,27 @@ impl App {
         }
         ScrollArea::vertical().show(ui, |ui| {
             for (index, source) in self.config.sources.clone().into_iter().enumerate() {
-                let title = self
+                let name = self
                     .dats
                     .get(index)
                     .and_then(|dat| dat.as_ref().ok())
                     .and_then(|dat| dat.header.name.as_deref())
                     .map(str::to_owned)
                     .unwrap_or_else(|| source.dat.display().to_string());
+                let total = self
+                    .dats
+                    .get(index)
+                    .and_then(|dat| dat.as_ref().ok())
+                    .map(|dat| dat.roms.len());
+                let found = self.verified.get(&index).map(|verified| {
+                    verified
+                        .report
+                        .roms
+                        .iter()
+                        .filter(|rom| rom.status == DatRomStatus::Present)
+                        .count()
+                });
+                let title = source_title(&name, total, found);
                 // A simple collapsing egui tree is used because egui_ltreeview could not be
                 // resolved in the locked/offline dependency environment for Rust 1.93.
                 egui::CollapsingHeader::new(title)
