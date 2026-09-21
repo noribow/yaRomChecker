@@ -64,6 +64,8 @@ struct Config {
     locale: String,
     cache_path: PathBuf,
     #[serde(default)]
+    dat_roots: Vec<PathBuf>,
+    #[serde(default)]
     sources: Vec<Source>,
 }
 
@@ -536,7 +538,13 @@ impl App {
             .iter()
             .map(|source| resolve_path(&self.config_path, &source.dat))
             .collect::<Vec<_>>();
-        let tree = build_source_tree(&paths);
+        let roots = self
+            .config
+            .dat_roots
+            .iter()
+            .map(|root| resolve_path(&self.config_path, root))
+            .collect::<Vec<_>>();
+        let tree = build_source_tree(&paths, &roots, self.messages.text("gui_dat_outside_roots"));
         ScrollArea::vertical().show(ui, |ui| self.show_source_nodes(ui, &tree));
     }
 
@@ -900,6 +908,29 @@ impl App {
             PathPicker::SaveFile,
             self.messages.text("gui_browse"),
         );
+        ui.separator();
+        ui.heading(self.messages.text("gui_dat_roots"));
+        let mut remove_root = None;
+        for (index, root) in self.settings.dat_roots.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                path_row(
+                    ui,
+                    self.messages.text("gui_dat_root"),
+                    root,
+                    PathPicker::Folder,
+                    self.messages.text("gui_browse"),
+                );
+                if ui.button(self.messages.text("gui_remove")).clicked() {
+                    remove_root = Some(index);
+                }
+            });
+        }
+        if let Some(index) = remove_root {
+            self.settings.dat_roots.remove(index);
+        }
+        if ui.button(self.messages.text("gui_add_dat_root")).clicked() {
+            self.settings.dat_roots.push(PathBuf::new());
+        }
         ui.separator();
         ui.heading(self.messages.text("gui_sources_settings"));
         ui.group(|ui| {
@@ -1512,6 +1543,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn config_round_trip_preserves_ordered_dat_roots() {
+        let config: Config = serde_yml::from_str(
+            "locale: en\ncache_path: cache.sqlite3\ndat_roots:\n  - root-a\n  - root-b\nsources: []\n",
+        )
+        .unwrap();
+        assert_eq!(
+            config.dat_roots,
+            vec![PathBuf::from("root-a"), PathBuf::from("root-b")]
+        );
+
+        let saved = serde_yml::to_string(&config).unwrap();
+        let reloaded: Config = serde_yml::from_str(&saved).unwrap();
+        assert_eq!(reloaded.dat_roots, config.dat_roots);
+        assert!(saved.contains("dat_roots:"));
     }
 
     #[test]

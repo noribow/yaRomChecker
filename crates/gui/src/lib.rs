@@ -1,7 +1,7 @@
 //! Small, independently tested GUI presentation rules.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     path::{Component, Path, PathBuf},
 };
 
@@ -26,29 +26,97 @@ struct SourceTreeFolder {
     dats: BTreeMap<String, Vec<usize>>,
 }
 
-/// Builds the Sources pane hierarchy from resolved DAT file paths without
-/// reading any directory from disk.
-pub fn build_source_tree(paths: &[PathBuf]) -> Vec<SourceTreeNode> {
-    let mut root = SourceTreeFolder::default();
+/// Builds the Sources pane hierarchy from resolved DAT file paths and resolved
+/// configured roots without reading any directory from disk.
+pub fn build_source_tree(
+    paths: &[PathBuf],
+    roots: &[PathBuf],
+    outside_title: &str,
+) -> Vec<SourceTreeNode> {
+    let mut root_folders = roots
+        .iter()
+        .cloned()
+        .map(|path| SourceTreeFolder {
+            path,
+            ..SourceTreeFolder::default()
+        })
+        .collect::<Vec<_>>();
+    let mut outside = SourceTreeFolder::default();
+
     for (source_index, path) in paths.iter().enumerate() {
-        let components = display_components(path);
-        let Some((file, folders)) = components.split_last() else {
-            continue;
-        };
-        let mut node = &mut root;
-        for folder in folders {
-            let child = node.folders.entry(folder.clone()).or_default();
-            if child.path.as_os_str().is_empty() {
-                child.path = node.path.join(folder);
+        let matching_root = roots
+            .iter()
+            .enumerate()
+            .filter(|(_, root)| path.starts_with(root))
+            .max_by_key(|(_, root)| root.components().count());
+        match matching_root {
+            Some((root_index, root)) => {
+                if let Ok(relative) = path.strip_prefix(root) {
+                    insert_path(&mut root_folders[root_index], relative, source_index);
+                }
             }
-            node = child;
+            None => insert_components(
+                &mut outside,
+                display_components_without_root(path),
+                source_index,
+            ),
         }
-        node.dats
-            .entry(file.clone())
-            .or_default()
-            .push(source_index);
     }
-    folder_children(root)
+
+    let root_names = roots.iter().map(|root| root_name(root)).fold(
+        HashMap::<String, usize>::new(),
+        |mut counts, name| {
+            *counts.entry(name).or_default() += 1;
+            counts
+        },
+    );
+    let mut tree = Vec::new();
+    for (root, folder) in roots.iter().zip(root_folders) {
+        if folder.folders.is_empty() && folder.dats.is_empty() {
+            continue;
+        }
+        let name = root_name(root);
+        let title = if root_names.get(&name).copied().unwrap_or_default() > 1 {
+            root.display().to_string()
+        } else {
+            name
+        };
+        tree.push(SourceTreeNode::Folder {
+            path: root.clone(),
+            title,
+            children: folder_children(folder),
+        });
+    }
+    if !outside.folders.is_empty() || !outside.dats.is_empty() {
+        tree.push(SourceTreeNode::Folder {
+            path: PathBuf::from("__outside_dat_roots__"),
+            title: outside_title.to_owned(),
+            children: folder_children(outside),
+        });
+    }
+    tree
+}
+
+fn insert_path(folder: &mut SourceTreeFolder, path: &Path, source_index: usize) {
+    insert_components(folder, display_components(path), source_index);
+}
+
+fn insert_components(folder: &mut SourceTreeFolder, components: Vec<String>, source_index: usize) {
+    let Some((file, folders)) = components.split_last() else {
+        return;
+    };
+    let mut node = folder;
+    for name in folders {
+        let child = node.folders.entry(name.clone()).or_default();
+        if child.path.as_os_str().is_empty() {
+            child.path = node.path.join(name);
+        }
+        node = child;
+    }
+    node.dats
+        .entry(file.clone())
+        .or_default()
+        .push(source_index);
 }
 
 fn display_components(path: &Path) -> Vec<String> {
@@ -61,6 +129,23 @@ fn display_components(path: &Path) -> Vec<String> {
             Component::ParentDir => Some("..".to_owned()),
         })
         .collect()
+}
+
+fn display_components_without_root(path: &Path) -> Vec<String> {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Prefix(_) | Component::RootDir | Component::CurDir => None,
+            Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+            Component::ParentDir => Some("..".to_owned()),
+        })
+        .collect()
+}
+
+fn root_name(root: &Path) -> String {
+    root.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| root.display().to_string())
 }
 
 fn folder_children(folder: SourceTreeFolder) -> Vec<SourceTreeNode> {
@@ -137,31 +222,83 @@ mod tests {
     use super::*;
 
     #[test]
-    fn source_tree_supports_mixed_children_and_multiple_roots() {
+    fn source_tree_uses_two_configured_roots_without_drive_nodes() {
         let paths = vec![
             PathBuf::from("C:/DATs/Nintendo/NES.dat"),
             PathBuf::from("C:/DATs/Arcade.xml"),
             PathBuf::from("D:/TOSEC/Amiga.dat"),
         ];
+        let roots = vec![PathBuf::from("C:/DATs"), PathBuf::from("D:/TOSEC")];
 
-        let tree = build_source_tree(&paths);
+        let tree = build_source_tree(&paths, &roots, "Outside DAT roots");
 
         assert_eq!(tree.len(), 2);
         let SourceTreeNode::Folder {
             title, children, ..
         } = &tree[0]
         else {
-            panic!("expected drive folder");
+            panic!("expected configured root");
         };
-        assert_eq!(title, "C:");
-        let SourceTreeNode::Folder { children, .. } = &children[0] else {
-            panic!("expected DATs folder");
-        };
+        assert_eq!(title, "DATs");
         assert!(matches!(
             children[0],
             SourceTreeNode::Dat { source_index: 1 }
         ));
         assert!(matches!(children[1], SourceTreeNode::Folder { .. }));
+    }
+
+    #[test]
+    fn source_tree_assigns_a_dat_to_the_longest_matching_root() {
+        let paths = vec![PathBuf::from("C:/DATs/Nintendo/NES.dat")];
+        let roots = vec![PathBuf::from("C:/DATs"), PathBuf::from("C:/DATs/Nintendo")];
+
+        let tree = build_source_tree(&paths, &roots, "Outside DAT roots");
+
+        assert_eq!(tree.len(), 1);
+        let SourceTreeNode::Folder {
+            title, children, ..
+        } = &tree[0]
+        else {
+            panic!("expected configured root");
+        };
+        assert_eq!(title, "Nintendo");
+        assert!(matches!(
+            children[0],
+            SourceTreeNode::Dat { source_index: 0 }
+        ));
+    }
+
+    #[test]
+    fn source_tree_groups_unmatched_paths_without_a_drive_node() {
+        let paths = vec![PathBuf::from("C:/Other/Nintendo/NES.dat")];
+
+        let tree = build_source_tree(&paths, &[PathBuf::from("D:/DATs")], "Outside DAT roots");
+
+        assert_eq!(tree.len(), 1);
+        let SourceTreeNode::Folder {
+            title, children, ..
+        } = &tree[0]
+        else {
+            panic!("expected outside group");
+        };
+        assert_eq!(title, "Outside DAT roots");
+        let SourceTreeNode::Folder { title, .. } = &children[0] else {
+            panic!("expected first path folder");
+        };
+        assert_eq!(title, "Other");
+    }
+
+    #[test]
+    fn source_tree_puts_all_sources_outside_when_roots_are_empty() {
+        let paths = vec![PathBuf::from("C:/DATs/NES.dat")];
+
+        let tree = build_source_tree(&paths, &[], "Outside DAT roots");
+
+        assert_eq!(tree.len(), 1);
+        assert!(matches!(
+            &tree[0],
+            SourceTreeNode::Folder { title, .. } if title == "Outside DAT roots"
+        ));
     }
 
     #[test]
