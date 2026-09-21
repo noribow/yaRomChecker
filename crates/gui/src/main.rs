@@ -15,7 +15,9 @@ use yaromchecker_core::{
     DatFile, DatRomStatus, EntryKind, MatchReport, ScanCache, ScanEntry, ScanMode, ScanReport,
     Scanner, SetStatus, match_collection,
 };
-use yaromchecker_gui::{dat_member_rows, should_show_member_pane, source_title};
+use yaromchecker_gui::{
+    SourceTreeNode, build_source_tree, dat_member_rows, should_show_member_pane, source_title,
+};
 
 const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -528,48 +530,65 @@ impl App {
             }
             return;
         }
-        ScrollArea::vertical().show(ui, |ui| {
-            for (index, source) in self.config.sources.clone().into_iter().enumerate() {
-                let name = self
-                    .dats
-                    .get(index)
-                    .and_then(|dat| dat.as_ref().ok())
-                    .and_then(|dat| dat.header.name.as_deref())
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| source.dat.display().to_string());
-                let total = self
-                    .dats
-                    .get(index)
-                    .and_then(|dat| dat.as_ref().ok())
-                    .map(|dat| dat.roms.len());
-                let found = self.verified.get(&index).map(|verified| {
-                    verified
-                        .report
-                        .roms
-                        .iter()
-                        .filter(|rom| rom.status == DatRomStatus::Present)
-                        .count()
-                });
-                let title = source_title(&name, total, found);
-                // A simple collapsing egui tree is used because egui_ltreeview could not be
-                // resolved in the locked/offline dependency environment for Rust 1.93.
-                egui::CollapsingHeader::new(title)
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        let selected = self.selected_source == Some(index);
-                        if ui
-                            .selectable_label(selected, source.collection.display().to_string())
-                            .clicked()
-                        {
-                            self.selected_source = Some(index);
-                            self.selected_set = None;
-                        }
-                        if let Some(Err(error)) = self.dats.get(index) {
-                            ui.colored_label(ui.visuals().error_fg_color, error);
-                        }
+        let paths = self
+            .config
+            .sources
+            .iter()
+            .map(|source| resolve_path(&self.config_path, &source.dat))
+            .collect::<Vec<_>>();
+        let tree = build_source_tree(&paths);
+        ScrollArea::vertical().show(ui, |ui| self.show_source_nodes(ui, &tree));
+    }
+
+    fn show_source_nodes(&mut self, ui: &mut egui::Ui, nodes: &[SourceTreeNode]) {
+        for node in nodes {
+            match node {
+                SourceTreeNode::Folder {
+                    path,
+                    title,
+                    children,
+                } => {
+                    egui::CollapsingHeader::new(title)
+                        .id_salt(("source-folder", path))
+                        .show(ui, |ui| self.show_source_nodes(ui, children));
+                }
+                SourceTreeNode::Dat { source_index } => {
+                    let index = *source_index;
+                    let source = &self.config.sources[index];
+                    let name = self
+                        .dats
+                        .get(index)
+                        .and_then(|dat| dat.as_ref().ok())
+                        .and_then(|dat| dat.header.name.as_deref())
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| source.dat.display().to_string());
+                    let total = self
+                        .dats
+                        .get(index)
+                        .and_then(|dat| dat.as_ref().ok())
+                        .map(|dat| dat.roms.len());
+                    let found = self.verified.get(&index).map(|verified| {
+                        verified
+                            .report
+                            .roms
+                            .iter()
+                            .filter(|rom| rom.status == DatRomStatus::Present)
+                            .count()
                     });
+                    let title = source_title(&name, total, found);
+                    if ui
+                        .selectable_label(self.selected_source == Some(index), title)
+                        .clicked()
+                    {
+                        self.selected_source = Some(index);
+                        self.selected_set = None;
+                    }
+                    if let Some(Err(error)) = self.dats.get(index) {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
+                }
             }
-        });
+        }
     }
 
     fn set_rows(&self) -> Vec<SetRow> {
@@ -1198,55 +1217,96 @@ fn bulk_add_sources(
     collection_parent: &Path,
     existing: &[Source],
 ) -> Result<BulkAddResult> {
-    let mut paths = fs::read_dir(dat_folder)
-        .with_context(|| format!("Cannot read DAT folder {}", dat_folder.display()))?
-        .filter_map(|entry| match entry {
-            Ok(entry) => {
-                let path = entry.path();
-                let supported = path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| {
-                        extension.eq_ignore_ascii_case("dat")
-                            || extension.eq_ignore_ascii_case("xml")
-                    });
-                supported.then_some(Ok(path))
-            }
-            Err(error) => Some(Err(error)),
-        })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut paths = Vec::new();
+    collect_dat_paths(dat_folder, &mut paths)?;
     paths.sort();
 
     let mut result = BulkAddResult::default();
-    let mut known: HashSet<PathBuf> = existing.iter().map(|source| source.dat.clone()).collect();
+    let mut known: HashSet<PathBuf> = existing
+        .iter()
+        .map(|source| comparable_path(&source.dat))
+        .collect();
+    let mut collections: HashSet<PathBuf> = existing
+        .iter()
+        .map(|source| comparable_path(&source.collection))
+        .collect();
     for path in paths {
-        if !known.insert(path.clone()) {
+        if !known.insert(comparable_path(&path)) {
             result.skipped += 1;
             continue;
         }
         match DatFile::load(&path) {
-            Ok(dat) => result.sources.push(source_from_dat(
-                path,
-                collection_parent,
-                dat.header.name.as_deref(),
-            )),
+            Ok(dat) => {
+                let source = source_from_dat(
+                    path.clone(),
+                    dat_folder,
+                    collection_parent,
+                    dat.header.name.as_deref(),
+                );
+                if collections.insert(comparable_path(&source.collection)) {
+                    result.sources.push(source);
+                } else {
+                    result.errors.push(format!(
+                        "{}: derived collection already exists: {}",
+                        path.display(),
+                        source.collection.display()
+                    ));
+                }
+            }
             Err(error) => result.errors.push(format!("{}: {error}", path.display())),
         }
     }
     Ok(result)
 }
 
-fn source_from_dat(dat: PathBuf, collection_parent: &Path, header_name: Option<&str>) -> Source {
+fn collect_dat_paths(folder: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(folder)
+        .with_context(|| format!("Cannot read DAT folder {}", folder.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_dat_paths(&path, paths)?;
+        } else if path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("dat") || extension.eq_ignore_ascii_case("xml")
+            })
+        {
+            paths.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn comparable_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn source_from_dat(
+    dat: PathBuf,
+    dat_folder: &Path,
+    collection_parent: &Path,
+    header_name: Option<&str>,
+) -> Source {
     let name = header_name.map(str::to_owned).unwrap_or_else(|| {
         dat.file_stem()
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned()
     });
-    Source {
-        dat,
-        collection: collection_parent.join(sanitize_folder_name(&name)),
+    let mut collection = collection_parent.to_path_buf();
+    if let Some(relative_parent) = dat
+        .parent()
+        .and_then(|parent| parent.strip_prefix(dat_folder).ok())
+    {
+        for segment in relative_parent.components() {
+            collection.push(sanitize_folder_name(&segment.as_os_str().to_string_lossy()));
+        }
     }
+    collection.push(sanitize_folder_name(&name));
+    Source { dat, collection }
 }
 
 fn sanitize_folder_name(name: &str) -> String {
@@ -1496,6 +1556,7 @@ mod tests {
     fn bulk_source_joins_parent_with_sanitized_dat_name() {
         let source = source_from_dat(
             PathBuf::from("C:/DATs/example.dat"),
+            Path::new("C:/DATs"),
             Path::new("C:/Collections"),
             Some("Nintendo (NES): Good Set"),
         );
@@ -1517,6 +1578,7 @@ mod tests {
     fn bulk_source_uses_file_stem_when_header_name_is_missing() {
         let source = source_from_dat(
             PathBuf::from("C:/DATs/Arcade Set.xml"),
+            Path::new("C:/DATs"),
             Path::new("C:/Collections"),
             None,
         );
@@ -1545,5 +1607,66 @@ mod tests {
         assert!(result.sources.is_empty());
         assert_eq!(result.skipped, 1);
         assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn bulk_add_recurses_and_preserves_sanitized_relative_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let nested = temp.path().join("Nintendo consoles").join("NES");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(
+            nested.join("example.DAT"),
+            "clrmamepro ( name \"Example/System\" )\ngame ( name \"Game\" )",
+        )
+        .unwrap();
+        fs::write(temp.path().join("ignored.txt"), "not a DAT").unwrap();
+
+        let result = bulk_add_sources(temp.path(), Path::new("collections"), &[]).unwrap();
+
+        assert_eq!(result.sources.len(), 1);
+        assert_eq!(
+            result.sources[0].collection,
+            Path::new("collections")
+                .join("Nintendo consoles")
+                .join("NES")
+                .join("Example_System")
+        );
+        assert!(!result.sources[0].collection.exists());
+    }
+
+    #[test]
+    fn bulk_source_sanitizes_each_relative_directory_segment() {
+        let source = source_from_dat(
+            PathBuf::from("root/Bad<dir/Other:dir/example.dat"),
+            Path::new("root"),
+            Path::new("collections"),
+            Some("Example"),
+        );
+
+        assert_eq!(
+            source.collection,
+            Path::new("collections")
+                .join("Bad_dir")
+                .join("Other_dir")
+                .join("Example")
+        );
+    }
+
+    #[test]
+    fn bulk_add_reports_each_derived_collection_collision() {
+        let temp = tempfile::tempdir().unwrap();
+        for filename in ["one.dat", "two.xml"] {
+            fs::write(
+                temp.path().join(filename),
+                "clrmamepro ( name \"Same Name\" )\ngame ( name \"Game\" )",
+            )
+            .unwrap();
+        }
+
+        let result = bulk_add_sources(temp.path(), Path::new("collections"), &[]).unwrap();
+
+        assert_eq!(result.sources.len(), 1);
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains("derived collection already exists"));
     }
 }
