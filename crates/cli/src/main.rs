@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
     fs,
-    io::{self, IsTerminal, Write},
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -284,10 +284,10 @@ fn scan_and_print(
     verbose: bool,
 ) -> Result<yaromchecker_core::ScanReport> {
     let stderr = io::stderr();
-    let is_tty = stderr.is_terminal();
     let mut stderr = stderr.lock();
     let report = if verbose {
-        let mut output = ProgressOutput::new(&mut stderr, path, messages, is_tty);
+        write_collection_start(&mut stderr, path, messages)?;
+        let mut output = ProgressOutput::new(&mut stderr, messages);
         let result = scanner.scan_with_detailed_progress(path, mode, |event| output.event(event));
         output.finish();
         result
@@ -444,25 +444,23 @@ fn scan_sources(
 
 struct ProgressOutput<'a, W: Write> {
     writer: W,
-    collection: &'a Path,
     messages: &'a Messages,
-    is_tty: bool,
     total: usize,
     finished: usize,
+    current_index: usize,
     current: Option<PathBuf>,
     inner: Option<(usize, usize)>,
     previous_width: usize,
 }
 
 impl<'a, W: Write> ProgressOutput<'a, W> {
-    fn new(writer: W, collection: &'a Path, messages: &'a Messages, is_tty: bool) -> Self {
+    fn new(writer: W, messages: &'a Messages) -> Self {
         Self {
             writer,
-            collection,
             messages,
-            is_tty,
             total: 0,
             finished: 0,
+            current_index: 0,
             current: None,
             inner: None,
             previous_width: 0,
@@ -473,24 +471,20 @@ impl<'a, W: Write> ProgressOutput<'a, W> {
         match event {
             ScanProgress::Started { containers } => {
                 self.total = containers;
-                if containers == 0 {
-                    self.render();
-                }
             }
             ScanProgress::ContainerStarted {
                 path,
                 inner_total,
                 reused,
             } => {
+                self.current_index = self.finished + 1;
                 self.current = Some(path);
                 self.inner = inner_total.map(|total| (usize::from(reused) * total, total));
                 self.render();
             }
             ScanProgress::InnerHashed { hashed, total } => {
                 self.inner = Some((hashed, total));
-                if self.is_tty {
-                    self.render();
-                }
+                self.render();
             }
             ScanProgress::ContainerFinished {
                 reused,
@@ -501,9 +495,7 @@ impl<'a, W: Write> ProgressOutput<'a, W> {
                 if reused {
                     self.inner = inner_total.map(|total| (total, total));
                 }
-                if self.is_tty {
-                    self.render();
-                }
+                self.render();
             }
         }
     }
@@ -512,44 +504,32 @@ impl<'a, W: Write> ProgressOutput<'a, W> {
         let current = self
             .current
             .as_deref()
-            .map(|path| {
-                path.strip_prefix(self.collection)
-                    .unwrap_or(path)
-                    .display()
-                    .to_string()
-            })
+            .and_then(Path::file_name)
+            .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let inner = self
-            .inner
-            .map(|(read, total)| {
-                self.messages.format(
-                    "scan_progress_archive",
-                    " | Archive inners: {read}/{total}",
-                    &[("read", read.to_string()), ("total", total.to_string())],
-                )
-            })
-            .unwrap_or_default();
+        let (inner_read, inner_total) = self.inner.unwrap_or((0, 0));
         let mut line = self.messages.format(
             "scan_progress_verbose",
-            "Collection: {path} | Target files: {total} | Files read: {read} | Current file: {current}{archive}",
-            &[("path", self.collection.display().to_string()), ("total", self.total.to_string()),
-              ("read", self.finished.to_string()), ("current", current), ("archive", inner)],
+            "Read File ({n}/{total}): ({inner_n}/{inner_total}): {name}",
+            &[
+                ("n", self.current_index.to_string()),
+                ("total", self.total.to_string()),
+                ("inner_n", inner_read.to_string()),
+                ("inner_total", inner_total.to_string()),
+                ("name", current),
+            ],
         );
-        if self.is_tty {
-            let width = line.chars().count();
-            if width < self.previous_width {
-                line.push_str(&" ".repeat(self.previous_width - width));
-            }
-            self.previous_width = width;
-            let _ = write!(self.writer, "\r{line}");
-            let _ = self.writer.flush();
-        } else {
-            let _ = writeln!(self.writer, "{line}");
+        let width = line.chars().count();
+        if width < self.previous_width {
+            line.push_str(&" ".repeat(self.previous_width - width));
         }
+        self.previous_width = line.chars().count();
+        let _ = write!(self.writer, "\r{line}");
+        let _ = self.writer.flush();
     }
 
     fn finish(&mut self) {
-        if self.is_tty && self.current.is_some() {
+        if self.current.is_some() {
             let _ = writeln!(self.writer);
         }
     }
@@ -787,12 +767,13 @@ mod tests {
     }
 
     #[test]
-    fn verbose_progress_reports_archive_totals_without_inner_lines() {
+    fn verbose_progress_rewrites_one_archive_status_line() {
         let messages = Messages::load("en").unwrap();
         let collection = Path::new("collection");
         let mut output = Vec::new();
         {
-            let mut progress = ProgressOutput::new(&mut output, collection, &messages, false);
+            write_collection_start(&mut output, collection, &messages).unwrap();
+            let mut progress = ProgressOutput::new(&mut output, &messages);
             progress.event(ScanProgress::Started { containers: 1 });
             progress.event(ScanProgress::ContainerStarted {
                 path: collection.join("games.zip"),
@@ -815,11 +796,68 @@ mod tests {
             progress.finish();
         }
         let output = String::from_utf8(output).unwrap();
-        assert_eq!(output.lines().count(), 1);
-        assert!(output.contains("Target files: 1"));
-        assert!(output.contains("Files read: 0"));
-        assert!(output.contains("Current file: games.zip"));
-        assert!(output.contains("Archive inners: 0/2"));
+        assert_eq!(
+            output,
+            concat!(
+                "Collection: collection\n",
+                "\rRead File (1/1): (0/2): games.zip",
+                "\rRead File (1/1): (1/2): games.zip",
+                "\rRead File (1/1): (2/2): games.zip",
+                "\rRead File (1/1): (2/2): games.zip\n",
+            )
+        );
+    }
+
+    #[test]
+    fn verbose_progress_uses_basename_and_keeps_clearing_to_longest_line() {
+        let messages = Messages::load("en").unwrap();
+        let mut output = Vec::new();
+        {
+            let mut progress = ProgressOutput::new(&mut output, &messages);
+            progress.event(ScanProgress::Started { containers: 3 });
+            progress.event(ScanProgress::ContainerStarted {
+                path: PathBuf::from("collection/a-very-long-file-name.zip"),
+                inner_total: Some(1),
+                reused: true,
+            });
+            progress.event(ScanProgress::ContainerFinished {
+                path: PathBuf::from("collection/a-very-long-file-name.zip"),
+                reused: true,
+                inner_total: Some(1),
+            });
+            progress.event(ScanProgress::ContainerStarted {
+                path: PathBuf::from("collection/b.rom"),
+                inner_total: None,
+                reused: false,
+            });
+            progress.event(ScanProgress::ContainerFinished {
+                path: PathBuf::from("collection/b.rom"),
+                reused: false,
+                inner_total: None,
+            });
+            progress.event(ScanProgress::ContainerStarted {
+                path: PathBuf::from("collection/medium-file-name.rom"),
+                inner_total: None,
+                reused: false,
+            });
+            progress.finish();
+        }
+        let output = String::from_utf8(output).unwrap();
+        let rendered_lines: Vec<_> = output
+            .split('\r')
+            .skip(1)
+            .map(|line| line.trim_end_matches('\n'))
+            .collect();
+        let longest_width = rendered_lines[0].chars().count();
+        assert!(output.contains("\rRead File (1/3): (1/1): a-very-long-file-name.zip"));
+        assert!(output.contains("\rRead File (2/3): (0/0): b.rom"));
+        assert!(output.contains("\rRead File (3/3): (0/0): medium-file-name.rom"));
+        assert!(
+            rendered_lines
+                .iter()
+                .all(|line| line.chars().count() == longest_width)
+        );
+        assert!(!output.contains("collection/b.rom"));
     }
 
     #[test]
