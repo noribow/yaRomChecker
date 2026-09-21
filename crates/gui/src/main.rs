@@ -15,7 +15,7 @@ use yaromchecker_core::{
     DatFile, DatRomStatus, EntryKind, MatchReport, ScanCache, ScanEntry, ScanMode, ScanReport,
     Scanner, SetStatus, match_collection,
 };
-use yaromchecker_gui::{set_count_text, should_show_member_pane};
+use yaromchecker_gui::{dat_member_rows, set_count_text, should_show_member_pane};
 
 const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -71,12 +71,20 @@ impl Messages {
         Ok(Self { fallback, selected })
     }
 
-    fn text<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
+    fn text<'a>(&'a self, key: &str) -> &'a str {
         self.selected
             .get(key)
             .or_else(|| self.fallback.get(key))
             .map(String::as_str)
-            .unwrap_or(fallback)
+            .unwrap_or_else(|| panic!("missing English locale key: {key}"))
+    }
+
+    fn format(&self, key: &str, values: &[(&str, String)]) -> String {
+        let mut text = self.text(key).to_owned();
+        for (name, value) in values {
+            text = text.replace(&format!("{{{name}}}"), value);
+        }
+        text
     }
 }
 
@@ -103,13 +111,15 @@ struct ScanSummary {
 }
 
 impl ScanSummary {
-    fn line(&self) -> String {
-        format!(
-            "Entries: {} | Containers hashed: {} | Containers reused: {} | Errors: {}",
-            self.entries,
-            self.hashed,
-            self.reused,
-            self.errors.len()
+    fn line(&self, messages: &Messages) -> String {
+        messages.format(
+            "gui_scan_summary",
+            &[
+                ("entries", self.entries.to_string()),
+                ("hashed", self.hashed.to_string()),
+                ("reused", self.reused.to_string()),
+                ("errors", self.errors.len().to_string()),
+            ],
         )
     }
 }
@@ -119,14 +129,21 @@ struct DatSummary {
     files: usize,
     present: usize,
     missing: usize,
+    missing_in_archive: usize,
     nodump: usize,
 }
 
 impl DatSummary {
-    fn line(&self) -> String {
-        format!(
-            "Files: {} | Present: {} | Missing: {} | nodump: {}",
-            self.files, self.present, self.missing, self.nodump
+    fn line(&self, messages: &Messages) -> String {
+        messages.format(
+            "gui_dat_summary",
+            &[
+                ("files", self.files.to_string()),
+                ("present", self.present.to_string()),
+                ("missing", self.missing.to_string()),
+                ("missing_in_archive", self.missing_in_archive.to_string()),
+                ("nodump", self.nodump.to_string()),
+            ],
         )
     }
 }
@@ -140,6 +157,11 @@ enum WorkerMessage {
 struct VerifiedSource {
     report: MatchReport,
     entries: Vec<ScanEntry>,
+}
+
+struct MemberRow {
+    name: String,
+    entry: Option<ScanEntry>,
 }
 
 struct App {
@@ -285,7 +307,7 @@ impl App {
         } else if let Some(index) = self.selected_source {
             vec![index]
         } else {
-            self.notice = Some("Select a source before verifying it.".to_owned());
+            self.notice = Some(self.messages.text("gui_notice_select_source").to_owned());
             return;
         };
         let cache_path = resolve_path(&self.config_path, &self.config.cache_path);
@@ -304,7 +326,13 @@ impl App {
             let canonical = match collection.canonicalize() {
                 Ok(path) => path,
                 Err(error) => {
-                    self.notice = Some(format!("Cannot resolve {}: {error}", collection.display()));
+                    self.notice = Some(self.messages.format(
+                        "gui_notice_resolve",
+                        &[
+                            ("path", collection.display().to_string()),
+                            ("error", error.to_string()),
+                        ],
+                    ));
                     continue;
                 }
             };
@@ -324,9 +352,9 @@ impl App {
             };
             let entries = cached_collections[&canonical].clone();
             if entries.is_empty() {
-                self.notice = Some(format!(
-                    "No cached scan entries were found for {}. Scan this collection first.",
-                    collection.display()
+                self.notice = Some(self.messages.format(
+                    "gui_notice_no_cache",
+                    &[("path", collection.display().to_string())],
                 ));
                 continue;
             }
@@ -340,12 +368,12 @@ impl App {
             total.missing += report
                 .roms
                 .iter()
-                .filter(|rom| {
-                    matches!(
-                        rom.status,
-                        DatRomStatus::Missing | DatRomStatus::MissingInArchive
-                    )
-                })
+                .filter(|rom| rom.status == DatRomStatus::Missing)
+                .count();
+            total.missing_in_archive += report
+                .roms
+                .iter()
+                .filter(|rom| rom.status == DatRomStatus::MissingInArchive)
                 .count();
             total.nodump += report
                 .roms
@@ -359,20 +387,21 @@ impl App {
     }
 
     fn menu(&mut self, ui: &mut egui::Ui) {
+        let verify_label = self.messages.text("gui_menu_verify").to_owned();
         egui::menu::bar(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                if ui.button("Exit").clicked() {
+            ui.menu_button(self.messages.text("gui_menu_file"), |ui| {
+                if ui.button(self.messages.text("gui_menu_exit")).clicked() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             });
-            if ui.button("Scan").clicked() {
+            if ui.button(self.messages.text("gui_menu_scan")).clicked() {
                 self.scan_popup = true;
             }
-            ui.menu_button("Verify", |ui| {
+            ui.menu_button(verify_label, |ui| {
                 if ui
                     .add_enabled(
                         self.selected_source.is_some(),
-                        egui::Button::new("Selected source"),
+                        egui::Button::new(self.messages.text("gui_verify_selected")),
                     )
                     .clicked()
                 {
@@ -382,7 +411,7 @@ impl App {
                 if ui
                     .add_enabled(
                         !self.config.sources.is_empty(),
-                        egui::Button::new("All sources"),
+                        egui::Button::new(self.messages.text("gui_verify_all")),
                     )
                     .clicked()
                 {
@@ -390,25 +419,25 @@ impl App {
                     ui.close_menu();
                 }
             });
-            if ui.button("Settings").clicked() {
+            if ui.button(self.messages.text("gui_menu_settings")).clicked() {
                 self.settings = self.config.clone();
                 self.surface = Surface::Settings;
             }
-            if ui.button("Report").clicked() {
+            if ui.button(self.messages.text("gui_menu_report")).clicked() {
                 self.surface = Surface::Report;
             }
-            ui.add_enabled(false, egui::Button::new("Organize"));
+            ui.add_enabled(
+                false,
+                egui::Button::new(self.messages.text("gui_menu_organize")),
+            );
         });
     }
 
     fn sources_pane(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Sources (DAT + collection)");
+        ui.heading(self.messages.text("gui_sources"));
         if self.config.sources.is_empty() {
-            ui.label(self.messages.text(
-                "dat_missing_config",
-                "No DAT collection sources configured. Add DAT and collection pairs under sources: in the YAML config.",
-            ));
-            if ui.button("Open Settings").clicked() {
+            ui.label(self.messages.text("dat_missing_config"));
+            if ui.button(self.messages.text("gui_open_settings")).clicked() {
                 self.surface = Surface::Settings;
             }
             return;
@@ -506,14 +535,14 @@ impl App {
     }
 
     fn sets_pane(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Sets");
+        ui.heading(self.messages.text("gui_sets"));
         if self.selected_source.is_none() {
-            ui.label("Select a DAT in the tree to list its sets.");
+            ui.label(self.messages.text("gui_select_dat"));
             return;
         }
         let rows = self.set_rows();
         if !self.verified.contains_key(&self.selected_source.unwrap()) {
-            ui.label("Run Verify to see statuses.");
+            ui.label(self.messages.text("gui_run_verify"));
         }
         TableBuilder::new(ui)
             .striped(true)
@@ -522,12 +551,12 @@ impl App {
             .columns(Column::auto(), 4)
             .header(22.0, |mut header| {
                 for label in [
-                    "Name",
-                    "Status",
-                    "Present",
-                    "Missing",
-                    "MissingInArchive",
-                    "nodump",
+                    self.messages.text("gui_column_name"),
+                    self.messages.text("gui_column_status"),
+                    self.messages.text("gui_status_present"),
+                    self.messages.text("gui_status_missing"),
+                    self.messages.text("gui_status_missing_in_archive"),
+                    self.messages.text("gui_status_nodump"),
                 ] {
                     header.col(|ui| {
                         ui.strong(label);
@@ -549,7 +578,11 @@ impl App {
                             }
                         });
                         row.col(|ui| {
-                            ui.label(status.map(set_status).unwrap_or("Not verified"));
+                            ui.label(
+                                status
+                                    .map(|value| set_status(&self.messages, value))
+                                    .unwrap_or_else(|| self.messages.text("gui_not_verified")),
+                            );
                         });
                         for value in [present, missing, missing_archive, nodump] {
                             row.col(|ui| {
@@ -561,40 +594,61 @@ impl App {
             });
     }
 
-    fn selected_members(&self) -> Vec<&ScanEntry> {
+    fn selected_members(&self) -> Vec<MemberRow> {
         let (Some(index), Some(game)) = (self.selected_source, self.selected_set.as_deref()) else {
             return Vec::new();
         };
-        let Some(verified) = self.verified.get(&index) else {
+        let Ok(dat) = &self.dats[index] else {
             return Vec::new();
         };
-        let paths: HashSet<&str> = verified
+        let names: Vec<String> = dat
+            .roms
+            .iter()
+            .filter(|rom| rom.game == game)
+            .map(|rom| rom.name.clone())
+            .collect();
+        let Some(verified) = self.verified.get(&index) else {
+            return names
+                .into_iter()
+                .map(|name| MemberRow { name, entry: None })
+                .collect();
+        };
+        let hits: Vec<(String, String)> = verified
             .report
             .files
             .iter()
             .filter(|file| file.game.as_deref() == Some(game))
-            .map(|file| file.entry_path.as_str())
+            .filter_map(|file| {
+                file.dat_name
+                    .as_ref()
+                    .map(|name| (name.clone(), file.entry_path.clone()))
+            })
             .collect();
-        verified
-            .entries
-            .iter()
-            .filter(|entry| paths.contains(entry.entry_path.as_str()))
+        dat_member_rows(&names, &hits)
+            .into_iter()
+            .map(|(name, hit)| MemberRow {
+                name,
+                entry: hit.and_then(|hit| {
+                    verified
+                        .entries
+                        .iter()
+                        .find(|entry| entry.entry_path == hits[hit].1)
+                        .cloned()
+                }),
+            })
             .collect()
     }
 
     fn members_pane(&self, ui: &mut egui::Ui) {
-        ui.heading("Members");
+        ui.heading(self.messages.text("gui_members"));
         let members = self.selected_members();
-        let has_archive = members.iter().any(|entry| entry.kind != EntryKind::File);
-        let dat_member_count = self
-            .selected_source
-            .and_then(|index| self.dats.get(index))
-            .and_then(|dat| dat.as_ref().ok())
-            .zip(self.selected_set.as_deref())
-            .map(|(dat, game)| dat.roms.iter().filter(|rom| rom.game == game).count())
-            .unwrap_or(0);
-        if !should_show_member_pane(members.len().max(dat_member_count), has_archive) {
-            ui.label("Select a multi-file or archive set to list members.");
+        let has_archive = members.iter().any(|row| {
+            row.entry
+                .as_ref()
+                .is_some_and(|entry| entry.kind != EntryKind::File)
+        });
+        if !should_show_member_pane(members.len(), has_archive) {
+            ui.label(self.messages.text("gui_select_members"));
             return;
         }
         TableBuilder::new(ui)
@@ -602,24 +656,51 @@ impl App {
             .column(Column::remainder().at_least(100.0))
             .columns(Column::auto(), 6)
             .header(22.0, |mut header| {
-                for label in ["Name", "Size", "mtime", "CRC32", "MD5", "SHA1", "Checked"] {
+                for label in [
+                    self.messages.text("gui_column_name"),
+                    self.messages.text("gui_column_size"),
+                    self.messages.text("gui_column_mtime"),
+                    self.messages.text("gui_column_crc32"),
+                    self.messages.text("gui_column_md5"),
+                    self.messages.text("gui_column_sha1"),
+                    self.messages.text("gui_column_checked"),
+                ] {
                     header.col(|ui| {
                         ui.strong(label);
                     });
                 }
             })
             .body(|mut body| {
-                for entry in members {
+                for member in members {
                     body.row(20.0, |mut row| {
-                        for value in [
-                            entry.entry_name.clone(),
-                            entry.entry_size.to_string(),
-                            format_timestamp(entry.container_mtime_ns),
-                            entry.hashes.crc32.clone(),
-                            entry.hashes.md5.clone(),
-                            entry.hashes.sha1.clone(),
-                            format_timestamp(entry.last_hashed_ns),
-                        ] {
+                        let values = if let Some(entry) = member.entry {
+                            [
+                                member.name,
+                                entry.entry_size.to_string(),
+                                format_timestamp(
+                                    entry.container_mtime_ns,
+                                    self.messages.text("gui_unknown"),
+                                ),
+                                entry.hashes.crc32,
+                                entry.hashes.md5,
+                                entry.hashes.sha1,
+                                format_timestamp(
+                                    entry.last_hashed_ns,
+                                    self.messages.text("gui_unknown"),
+                                ),
+                            ]
+                        } else {
+                            [
+                                member.name,
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                            ]
+                        };
+                        for value in values {
                             row.col(|ui| {
                                 ui.label(value);
                             });
@@ -638,12 +719,14 @@ impl App {
                 ui.set_width(left);
                 ui.allocate_ui(egui::vec2(left, top), |ui| self.sources_pane(ui));
                 ui.separator();
-                ui.heading("External media (later)");
-                ui.label("Health check and copy from media are planned. Writing to external media is not supported.");
+                ui.heading(self.messages.text("gui_external_media"));
+                ui.label(self.messages.text("gui_external_media_help"));
             });
             ui.separator();
             ui.vertical(|ui| {
-                ui.allocate_ui(egui::vec2(ui.available_width(), top), |ui| self.sets_pane(ui));
+                ui.allocate_ui(egui::vec2(ui.available_width(), top), |ui| {
+                    self.sets_pane(ui)
+                });
                 ui.separator();
                 self.members_pane(ui);
             });
@@ -652,15 +735,15 @@ impl App {
 
     fn settings_surface(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.heading("Settings");
-            if ui.button("Back").clicked() {
+            ui.heading(self.messages.text("gui_menu_settings"));
+            if ui.button(self.messages.text("gui_back")).clicked() {
                 self.surface = Surface::Main;
             }
         });
-        ui.label("Configuration file (read-only):");
+        ui.label(self.messages.text("gui_config_read_only"));
         let mut config_display = self.config_path.display().to_string();
         ui.add(TextEdit::singleline(&mut config_display).interactive(false));
-        egui::ComboBox::from_label("Locale")
+        egui::ComboBox::from_label(self.messages.text("gui_locale"))
             .selected_text(&self.settings.locale)
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut self.settings.locale, "en".to_owned(), "en");
@@ -668,18 +751,31 @@ impl App {
             });
         path_row(
             ui,
-            "Cache path",
+            self.messages.text("gui_cache_path"),
             &mut self.settings.cache_path,
             PathPicker::SaveFile,
+            self.messages.text("gui_browse"),
         );
         ui.separator();
-        ui.heading("DAT and collection sources");
+        ui.heading(self.messages.text("gui_sources_settings"));
         let mut remove = None;
         for (index, source) in self.settings.sources.iter_mut().enumerate() {
             ui.group(|ui| {
-                path_row(ui, "DAT", &mut source.dat, PathPicker::File);
-                path_row(ui, "Collection", &mut source.collection, PathPicker::Folder);
-                if ui.button("Remove").clicked() {
+                path_row(
+                    ui,
+                    self.messages.text("gui_dat"),
+                    &mut source.dat,
+                    PathPicker::File,
+                    self.messages.text("gui_browse"),
+                );
+                path_row(
+                    ui,
+                    self.messages.text("gui_collection"),
+                    &mut source.collection,
+                    PathPicker::Folder,
+                    self.messages.text("gui_browse"),
+                );
+                if ui.button(self.messages.text("gui_remove")).clicked() {
                     remove = Some(index);
                 }
             });
@@ -687,13 +783,13 @@ impl App {
         if let Some(index) = remove {
             self.settings.sources.remove(index);
         }
-        if ui.button("Add source").clicked() {
+        if ui.button(self.messages.text("gui_add_source")).clicked() {
             self.settings.sources.push(Source {
                 dat: PathBuf::new(),
                 collection: PathBuf::new(),
             });
         }
-        if ui.button("Save").clicked() {
+        if ui.button(self.messages.text("gui_save")).clicked() {
             match serde_yml::to_string(&self.settings)
                 .map_err(anyhow::Error::from)
                 .and_then(|yaml| fs::write(&self.config_path, yaml).map_err(anyhow::Error::from))
@@ -706,39 +802,65 @@ impl App {
                     self.selected_set = None;
                     self.verified.clear();
                     self.reload_dats();
-                    self.notice = Some("Settings saved.".to_owned());
+                    self.notice = Some(self.messages.text("gui_notice_saved").to_owned());
                     self.surface = Surface::Main;
                 }
-                Err(error) => self.notice = Some(format!("Cannot save settings: {error}")),
+                Err(error) => {
+                    self.notice = Some(
+                        self.messages
+                            .format("gui_notice_save_error", &[("error", error.to_string())]),
+                    )
+                }
             }
         }
     }
 
     fn report_surface(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.heading("Report");
-            if ui.button("Back").clicked() {
+            ui.heading(self.messages.text("gui_menu_report"));
+            if ui.button(self.messages.text("gui_back")).clicked() {
                 self.surface = Surface::Main;
             }
         });
-        let scan = self.scan_summary.as_ref().map(ScanSummary::line);
-        let dat = self.dat_summary.as_ref().map(DatSummary::line);
+        let scan = self
+            .scan_summary
+            .as_ref()
+            .map(|summary| summary.line(&self.messages));
+        let dat = self
+            .dat_summary
+            .as_ref()
+            .map(|summary| summary.line(&self.messages));
         if scan.is_none() && dat.is_none() {
-            ui.label("No report is available. Run a scan or verification first.");
+            ui.label(self.messages.text("gui_report_empty"));
         }
-        ui.label(RichText::new("Last scan summary (read-only)").strong());
-        ui.label(scan.as_deref().unwrap_or("No scan yet"));
-        ui.label(RichText::new("Last DAT summary (read-only)").strong());
-        ui.label(dat.as_deref().unwrap_or("No verification yet"));
-        if ui.button("Copy summaries").clicked() {
+        ui.label(RichText::new(self.messages.text("gui_last_scan_summary")).strong());
+        ui.label(
+            scan.as_deref()
+                .unwrap_or_else(|| self.messages.text("gui_no_scan")),
+        );
+        ui.label(RichText::new(self.messages.text("gui_last_dat_summary")).strong());
+        ui.label(
+            dat.as_deref()
+                .unwrap_or_else(|| self.messages.text("gui_no_verification")),
+        );
+        if ui
+            .button(self.messages.text("gui_copy_summaries"))
+            .clicked()
+        {
             ui.ctx().copy_text(format!(
                 "{}\n{}",
-                scan.unwrap_or_else(|| "No scan yet".into()),
-                dat.unwrap_or_else(|| "No verification yet".into())
+                scan.unwrap_or_else(|| self.messages.text("gui_no_scan").into()),
+                dat.unwrap_or_else(|| self.messages.text("gui_no_verification").into())
             ));
         }
-        ui.add_enabled(false, egui::Button::new("Export - later"));
-        ui.add_enabled(false, egui::Button::new("Organize preview - later"));
+        ui.add_enabled(
+            false,
+            egui::Button::new(self.messages.text("gui_export_later")),
+        );
+        ui.add_enabled(
+            false,
+            egui::Button::new(self.messages.text("gui_organize_preview_later")),
+        );
     }
 
     fn status_bar(&self, ui: &mut egui::Ui) {
@@ -747,21 +869,27 @@ impl App {
                 .selected_source
                 .and_then(|index| self.config.sources.get(index))
                 .map(|source| source.collection.display().to_string())
-                .unwrap_or_else(|| "No source selected".to_owned());
-            ui.label(format!("Collection: {collection}"));
+                .unwrap_or_else(|| self.messages.text("gui_no_source").to_owned());
+            ui.label(
+                self.messages
+                    .format("gui_status_collection", &[("path", collection)]),
+            );
             ui.separator();
             ui.label(
                 self.scan_summary
                     .as_ref()
-                    .map(ScanSummary::line)
-                    .unwrap_or_else(|| "No scan yet".into()),
+                    .map(|summary| summary.line(&self.messages))
+                    .unwrap_or_else(|| self.messages.text("gui_no_scan").into()),
             );
             ui.separator();
-            ui.label(format!("Locale: {}", self.config.locale));
+            ui.label(self.messages.format(
+                "gui_status_locale",
+                &[("locale", self.config.locale.clone())],
+            ));
             ui.separator();
-            ui.label(format!(
-                "Config: {} (read-only)",
-                self.config_path.display()
+            ui.label(self.messages.format(
+                "gui_status_config",
+                &[("path", self.config_path.display().to_string())],
             ));
         });
     }
@@ -771,17 +899,28 @@ impl App {
             return;
         }
         egui::Modal::new(egui::Id::new("scan_modal")).show(ctx, |ui| {
-            ui.heading("Scan");
-            ui.label("Sources: unique collections from YAML");
+            ui.heading(self.messages.text("gui_menu_scan"));
+            ui.label(self.messages.text("gui_scan_sources"));
             ui.radio_value(
                 &mut self.scan_choice,
                 ScanChoice::Initial,
-                "Initial/full scan",
+                self.messages.text("gui_scan_initial"),
             );
-            ui.radio_value(&mut self.scan_choice, ScanChoice::Quick, "Quick rescan");
-            ui.radio_value(&mut self.scan_choice, ScanChoice::Full, "Full rescan");
+            ui.radio_value(
+                &mut self.scan_choice,
+                ScanChoice::Quick,
+                self.messages.text("gui_scan_quick"),
+            );
+            ui.radio_value(
+                &mut self.scan_choice,
+                ScanChoice::Full,
+                self.messages.text("gui_scan_full"),
+            );
             if ui
-                .add_enabled(!self.scan_running, egui::Button::new("Start"))
+                .add_enabled(
+                    !self.scan_running,
+                    egui::Button::new(self.messages.text("gui_start")),
+                )
                 .clicked()
             {
                 self.start_scan();
@@ -789,23 +928,28 @@ impl App {
             if self.scan_running {
                 ui.spinner();
             }
-            ui.label(format!(
-                "Current container: {}",
-                self.current_container
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "None".into())
-            ));
+            let current = self
+                .current_container
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| self.messages.text("gui_none").into());
+            ui.label(
+                self.messages
+                    .format("gui_current_container", &[("path", current)]),
+            );
             if let Some(summary) = &self.scan_summary {
-                ui.label(summary.line());
+                ui.label(summary.line(&self.messages));
                 for error in &summary.errors {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
             } else {
-                ui.label("Choose a scan mode. Start hashes configured source collections.");
+                ui.label(self.messages.text("gui_scan_help"));
             }
             if ui
-                .add_enabled(!self.scan_running, egui::Button::new("Close"))
+                .add_enabled(
+                    !self.scan_running,
+                    egui::Button::new(self.messages.text("gui_close")),
+                )
                 .clicked()
             {
                 self.scan_popup = false;
@@ -828,11 +972,11 @@ impl eframe::App for App {
             Surface::Report => self.report_surface(ui),
         });
         if let Some(notice) = self.notice.clone() {
-            egui::Window::new("Notice")
+            egui::Window::new(self.messages.text("gui_notice"))
                 .collapsible(false)
                 .show(ctx, |ui| {
                     ui.label(notice);
-                    if ui.button("OK").clicked() {
+                    if ui.button(self.messages.text("gui_ok")).clicked() {
                         self.notice = None;
                     }
                 });
@@ -848,14 +992,14 @@ enum PathPicker {
     SaveFile,
 }
 
-fn path_row(ui: &mut egui::Ui, label: &str, path: &mut PathBuf, picker: PathPicker) {
+fn path_row(ui: &mut egui::Ui, label: &str, path: &mut PathBuf, picker: PathPicker, browse: &str) {
     ui.horizontal(|ui| {
         ui.label(label);
         let mut value = path.display().to_string();
         if ui.text_edit_singleline(&mut value).changed() {
             *path = value.into();
         }
-        if ui.button("Browse...").clicked() {
+        if ui.button(browse).clicked() {
             let dialog = rfd::FileDialog::new();
             let selected = match picker {
                 PathPicker::File => dialog.pick_file(),
@@ -869,17 +1013,17 @@ fn path_row(ui: &mut egui::Ui, label: &str, path: &mut PathBuf, picker: PathPick
     });
 }
 
-fn set_status(status: SetStatus) -> &'static str {
+fn set_status(messages: &Messages, status: SetStatus) -> &str {
     match status {
-        SetStatus::Complete => "Complete",
-        SetStatus::Incomplete => "Incomplete",
-        SetStatus::MissingSet => "MissingSet",
+        SetStatus::Complete => messages.text("set_status_complete"),
+        SetStatus::Incomplete => messages.text("set_status_incomplete"),
+        SetStatus::MissingSet => messages.text("set_status_missing"),
     }
 }
 
-fn format_timestamp(timestamp_ns: i64) -> String {
+fn format_timestamp(timestamp_ns: i64, unknown: &str) -> String {
     if timestamp_ns <= 0 {
-        return "Unknown".to_owned();
+        return unknown.to_owned();
     }
     let total_seconds = timestamp_ns / 1_000_000_000;
     let days = total_seconds.div_euclid(86_400);
@@ -946,10 +1090,51 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let config_path = args.config.map(Ok).unwrap_or_else(default_config_path)?;
     let app = App::load(config_path)?;
+    let title = app.messages.text("gui_title").to_owned();
     eframe::run_native(
-        "yaRomChecker",
+        &title,
         eframe::NativeOptions::default(),
         Box::new(|_creation_context| Ok(Box::new(app))),
     )
     .map_err(|error| anyhow::anyhow!(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn english_locale_contains_every_gui_and_status_key_used_by_gui() {
+        let english: HashMap<String, String> = serde_yml::from_str(EN_MESSAGES).unwrap();
+        let source = include_str!("main.rs");
+        for marker in [".text(\"", ".format(\""] {
+            for remainder in source.split(marker).skip(1) {
+                let key = remainder.split('"').next().unwrap();
+                if key.starts_with("gui_")
+                    || key.starts_with("status_")
+                    || key.starts_with("set_status_")
+                {
+                    assert!(
+                        english.contains_key(key),
+                        "missing locales/en.yaml key {key}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dat_summary_keeps_missing_categories_separate() {
+        let messages = Messages::load("en").unwrap();
+        let summary = DatSummary {
+            files: 4,
+            present: 1,
+            missing: 2,
+            missing_in_archive: 3,
+            nodump: 4,
+        };
+        let line = summary.line(&messages);
+        assert!(line.contains("Missing: 2"));
+        assert!(line.contains("MissingInArchive: 3"));
+    }
 }
