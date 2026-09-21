@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
     fs,
+    io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
 };
 
@@ -8,8 +9,8 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
 use yaromchecker_core::{
-    DatFile, DatRomStatus, DumpStatus, FileStatus, ScanCache, ScanMode, Scanner, SetStatus,
-    match_collection,
+    DatFile, DatRomStatus, DumpStatus, FileStatus, ScanCache, ScanMode, ScanProgress, Scanner,
+    SetStatus, match_collection,
 };
 
 const EN_MESSAGES: &str = include_str!("../../../locales/en.yaml");
@@ -21,6 +22,8 @@ const DEFAULT_CONFIG: &str = include_str!("../../../yaRomChecker.example.yaml");
 struct Cli {
     #[arg(long, global = true)]
     config: Option<PathBuf>,
+    #[arg(short, long, global = true)]
+    verbose: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -253,6 +256,7 @@ fn run() -> Result<()> {
                 &mut scanner,
                 ScanMode::Full,
                 &messages,
+                cli.verbose,
             )?;
         }
         Command::Quick => {
@@ -262,9 +266,12 @@ fn run() -> Result<()> {
                 &mut scanner,
                 ScanMode::Quick,
                 &messages,
+                cli.verbose,
             )?;
         }
-        Command::Verify => verify_sources(&config, &config_path, &mut scanner, &messages)?,
+        Command::Verify => {
+            verify_sources(&config, &config_path, &mut scanner, &messages, cli.verbose)?
+        }
     }
     Ok(())
 }
@@ -274,8 +281,21 @@ fn scan_and_print(
     path: &Path,
     mode: ScanMode,
     messages: &Messages,
+    verbose: bool,
 ) -> Result<yaromchecker_core::ScanReport> {
-    let report = scanner.scan(path, mode).with_context(|| {
+    let stderr = io::stderr();
+    let is_tty = stderr.is_terminal();
+    let mut stderr = stderr.lock();
+    let report = if verbose {
+        let mut output = ProgressOutput::new(&mut stderr, path, messages, is_tty);
+        let result = scanner.scan_with_detailed_progress(path, mode, |event| output.event(event));
+        output.finish();
+        result
+    } else {
+        write_collection_start(&mut stderr, path, messages)?;
+        scanner.scan(path, mode)
+    }
+    .with_context(|| {
         messages.format(
             "scan_error",
             "Cannot scan {path}",
@@ -311,6 +331,22 @@ fn scan_and_print(
     Ok(report)
 }
 
+fn write_collection_start(
+    writer: &mut impl Write,
+    path: &Path,
+    messages: &Messages,
+) -> io::Result<()> {
+    writeln!(
+        writer,
+        "{}",
+        messages.format(
+            "scan_progress_collection",
+            "Collection: {path}",
+            &[("path", path.display().to_string())]
+        )
+    )
+}
+
 fn resolve_path(base: &Path, path: PathBuf) -> PathBuf {
     if path.is_absolute() {
         path
@@ -324,8 +360,16 @@ fn verify_sources(
     config_path: &Path,
     scanner: &mut Scanner,
     messages: &Messages,
+    verbose: bool,
 ) -> Result<()> {
-    let scans = scan_sources(config, config_path, scanner, ScanMode::Quick, messages)?;
+    let scans = scan_sources(
+        config,
+        config_path,
+        scanner,
+        ScanMode::Quick,
+        messages,
+        verbose,
+    )?;
     for source in &config.sources {
         let dat_path = resolve_path(config_path, source.dat.clone());
         let collection = resolve_path(config_path, source.collection.clone()).canonicalize()?;
@@ -367,6 +411,7 @@ fn scan_sources(
     scanner: &mut Scanner,
     mode: ScanMode,
     messages: &Messages,
+    verbose: bool,
 ) -> Result<HashMap<PathBuf, yaromchecker_core::ScanReport>> {
     if config.sources.is_empty() {
         anyhow::bail!(
@@ -385,10 +430,129 @@ fn scan_sources(
                 format!("Cannot resolve collection {}", source.collection.display())
             })?;
         if let Entry::Vacant(slot) = scans.entry(collection.clone()) {
-            slot.insert(scan_and_print(scanner, &collection, mode, messages)?);
+            slot.insert(scan_and_print(
+                scanner,
+                &collection,
+                mode,
+                messages,
+                verbose,
+            )?);
         }
     }
     Ok(scans)
+}
+
+struct ProgressOutput<'a, W: Write> {
+    writer: W,
+    collection: &'a Path,
+    messages: &'a Messages,
+    is_tty: bool,
+    total: usize,
+    finished: usize,
+    current: Option<PathBuf>,
+    inner: Option<(usize, usize)>,
+    previous_width: usize,
+}
+
+impl<'a, W: Write> ProgressOutput<'a, W> {
+    fn new(writer: W, collection: &'a Path, messages: &'a Messages, is_tty: bool) -> Self {
+        Self {
+            writer,
+            collection,
+            messages,
+            is_tty,
+            total: 0,
+            finished: 0,
+            current: None,
+            inner: None,
+            previous_width: 0,
+        }
+    }
+
+    fn event(&mut self, event: ScanProgress) {
+        match event {
+            ScanProgress::Started { containers } => {
+                self.total = containers;
+                if containers == 0 {
+                    self.render();
+                }
+            }
+            ScanProgress::ContainerStarted {
+                path,
+                inner_total,
+                reused,
+            } => {
+                self.current = Some(path);
+                self.inner = inner_total.map(|total| (usize::from(reused) * total, total));
+                self.render();
+            }
+            ScanProgress::InnerHashed { hashed, total } => {
+                self.inner = Some((hashed, total));
+                if self.is_tty {
+                    self.render();
+                }
+            }
+            ScanProgress::ContainerFinished {
+                reused,
+                inner_total,
+                ..
+            } => {
+                self.finished += 1;
+                if reused {
+                    self.inner = inner_total.map(|total| (total, total));
+                }
+                if self.is_tty {
+                    self.render();
+                }
+            }
+        }
+    }
+
+    fn render(&mut self) {
+        let current = self
+            .current
+            .as_deref()
+            .map(|path| {
+                path.strip_prefix(self.collection)
+                    .unwrap_or(path)
+                    .display()
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let inner = self
+            .inner
+            .map(|(read, total)| {
+                self.messages.format(
+                    "scan_progress_archive",
+                    " | Archive inners: {read}/{total}",
+                    &[("read", read.to_string()), ("total", total.to_string())],
+                )
+            })
+            .unwrap_or_default();
+        let mut line = self.messages.format(
+            "scan_progress_verbose",
+            "Collection: {path} | Target files: {total} | Files read: {read} | Current file: {current}{archive}",
+            &[("path", self.collection.display().to_string()), ("total", self.total.to_string()),
+              ("read", self.finished.to_string()), ("current", current), ("archive", inner)],
+        );
+        if self.is_tty {
+            let width = line.chars().count();
+            if width < self.previous_width {
+                line.push_str(&" ".repeat(self.previous_width - width));
+            }
+            self.previous_width = width;
+            let _ = write!(self.writer, "\r{line}");
+            let _ = self.writer.flush();
+        } else {
+            let _ = writeln!(self.writer, "{line}");
+        }
+    }
+
+    fn finish(&mut self) {
+        if self.is_tty && self.current.is_some() {
+            let _ = writeln!(self.writer);
+        }
+    }
 }
 
 fn entries_in_collection(
@@ -603,6 +767,59 @@ mod tests {
         for command in ["scan", "quick", "full"] {
             assert!(Cli::try_parse_from(["yarc", command, "collection"]).is_err());
         }
+        assert!(Cli::try_parse_from(["yarc", "-v", "scan"]).unwrap().verbose);
+        assert!(
+            Cli::try_parse_from(["yarc", "scan", "--verbose"])
+                .unwrap()
+                .verbose
+        );
+    }
+
+    #[test]
+    fn default_progress_only_prints_the_collection() {
+        let messages = Messages::load("en").unwrap();
+        let mut output = Vec::new();
+        write_collection_start(&mut output, Path::new("collection"), &messages).unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Collection: collection\n"
+        );
+    }
+
+    #[test]
+    fn verbose_progress_reports_archive_totals_without_inner_lines() {
+        let messages = Messages::load("en").unwrap();
+        let collection = Path::new("collection");
+        let mut output = Vec::new();
+        {
+            let mut progress = ProgressOutput::new(&mut output, collection, &messages, false);
+            progress.event(ScanProgress::Started { containers: 1 });
+            progress.event(ScanProgress::ContainerStarted {
+                path: collection.join("games.zip"),
+                inner_total: Some(2),
+                reused: false,
+            });
+            progress.event(ScanProgress::InnerHashed {
+                hashed: 1,
+                total: 2,
+            });
+            progress.event(ScanProgress::InnerHashed {
+                hashed: 2,
+                total: 2,
+            });
+            progress.event(ScanProgress::ContainerFinished {
+                path: collection.join("games.zip"),
+                reused: false,
+                inner_total: Some(2),
+            });
+            progress.finish();
+        }
+        let output = String::from_utf8(output).unwrap();
+        assert_eq!(output.lines().count(), 1);
+        assert!(output.contains("Target files: 1"));
+        assert!(output.contains("Files read: 0"));
+        assert!(output.contains("Current file: games.zip"));
+        assert!(output.contains("Archive inners: 0/2"));
     }
 
     #[test]
@@ -680,6 +897,7 @@ mod tests {
             &config_path,
             &mut Scanner::new(cache),
             &Messages::load("en").unwrap(),
+            false,
         )
         .unwrap_err();
         assert!(error.to_string().contains("No DAT collection sources"));
@@ -701,6 +919,7 @@ mod tests {
                 &mut Scanner::new(cache),
                 mode,
                 &messages,
+                false,
             )
             .unwrap_err();
             assert!(
@@ -735,6 +954,7 @@ mod tests {
             &mut scanner,
             ScanMode::Full,
             &messages,
+            false,
         )
         .unwrap();
         assert_eq!(full.len(), 2);
@@ -747,6 +967,7 @@ mod tests {
             &mut scanner,
             ScanMode::Quick,
             &messages,
+            false,
         )
         .unwrap();
         assert_eq!(quick.len(), 2);

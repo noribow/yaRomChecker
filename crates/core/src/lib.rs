@@ -11,7 +11,7 @@ pub use dat::{
     MatchReport, SetMatch, SetStatus, match_collection,
 };
 pub use hash::{Hashes, hash_reader};
-pub use scan::{EntryKind, ScanEntry, ScanMode, ScanReport, Scanner};
+pub use scan::{EntryKind, ScanEntry, ScanMode, ScanProgress, ScanReport, Scanner};
 
 use thiserror::Error;
 
