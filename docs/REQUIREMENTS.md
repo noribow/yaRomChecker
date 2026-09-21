@@ -141,7 +141,7 @@ DAT **content** trees (parent/clone, header groups, MAME machines) are **not** t
 
 ## CLI (`yarc`)
 
-Subcommands: initial `scan`, `quick` rescan, `full` rescan, and `verify`. **None of them take a collection folder on the command line.** The scan target is every unique resolved `sources[].collection` from YAML (same membership as GUI Scan / `yarc verify`’s scan step). `--config` remains the only path-related flag.
+Subcommands: initial `scan`, `quick` rescan, `full` rescan, and `verify`. **None of them take a collection folder on the command line.** The scan target is every unique resolved `sources[].collection` from YAML (same membership as GUI Scan / `yarc verify`’s scan step). Path-related flags are `--config` and global `--verbose` / `-v` (not a collection path).
 
 Empty `sources` makes `scan`, `quick`, `full`, and `verify` fail with the missing-source message. Duplicate collection directories are scanned once. `dat_roots` and `collection_root` are not scan roots. CLI does **not** print a folder/DAT tree. Hierarchy is GUI-only.
 
@@ -151,6 +151,38 @@ flowchart TB
   yaml["YAML sources[].collection unique dirs"]
   cache["Shared scan cache"]
   cmd --> yaml --> cache
+```
+
+### Scan progress (stderr)
+
+While hashing those unique collections (`yarc scan`, `quick`, `full`, and the scan step of `verify`), write **progress to stderr**. Keep the existing per-collection summary and entry lines on stdout.
+
+**Default** (no `--verbose`): when a collection starts, print its resolved collection path. Do not print per-file or inner-archive counts. Parallel hashing may stay enabled.
+
+**`--verbose` / `-v`:** while that collection runs, show all of:
+
+| Field | Meaning |
+| --- | --- |
+| Collection | The same resolved collection path as default |
+| Target files | Count of **container** files under that collection (same WalkDir as the scan: regular files, including ZIP/7z containers; not directories, not inner members) |
+| Files read | Containers finished (hashed or cache-reused) in this collection |
+| Current file | The container now being checked or hashed (name, or path relative to the collection) |
+| Archive inners | Only while that current container is ZIP or 7z (same extension rules as hashing): non-directory inner member **total** and how many of those have been hashed in this pass |
+
+Quick reuse of an archive counts the container as read; inner totals may come from the reused cache rows (read = total). Do not extract archives to disk.
+
+Verbose hashing is **one container at a time** so the current file and inner counts are accurate. If stderr is a TTY, overwrite **one** status line (carriage return). If it is not a TTY, print a new line when the current **container** changes (not on every inner member). After each collection, end with a newline so the next collection or stdout summary is distinct.
+
+English locale strings. YAML does not store verbose.
+
+```mermaid
+flowchart TB
+  col["Start unique collection"]
+  def["Default stderr: collection path"]
+  verb["Verbose stderr: collection + container total/done + current file"]
+  arch["If ZIP/7z: inner total/done"]
+  col --> def
+  col --> verb --> arch
 ```
 
 ## GUI
