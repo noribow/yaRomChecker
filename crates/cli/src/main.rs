@@ -27,9 +27,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    Scan { path: PathBuf },
-    Quick { path: PathBuf },
-    Full { path: PathBuf },
+    Scan,
+    Quick,
+    Full,
     Verify,
 }
 
@@ -191,7 +191,7 @@ fn parse_cli(messages: &Messages) -> Cli {
                 messages
                     .text(
                         "quick_help",
-                        "Rescan a collection, reusing unchanged cached records",
+                        "Rescan configured collections, reusing unchanged cached records",
                     )
                     .to_owned(),
             )
@@ -246,11 +246,23 @@ fn run() -> Result<()> {
         )
     })?);
     match cli.command {
-        Command::Scan { path } | Command::Full { path } => {
-            scan_and_print(&mut scanner, &path, ScanMode::Full, &messages)?;
+        Command::Scan | Command::Full => {
+            scan_sources(
+                &config,
+                &config_path,
+                &mut scanner,
+                ScanMode::Full,
+                &messages,
+            )?;
         }
-        Command::Quick { path } => {
-            scan_and_print(&mut scanner, &path, ScanMode::Quick, &messages)?;
+        Command::Quick => {
+            scan_sources(
+                &config,
+                &config_path,
+                &mut scanner,
+                ScanMode::Quick,
+                &messages,
+            )?;
         }
         Command::Verify => verify_sources(&config, &config_path, &mut scanner, &messages)?,
     }
@@ -313,31 +325,7 @@ fn verify_sources(
     scanner: &mut Scanner,
     messages: &Messages,
 ) -> Result<()> {
-    if config.sources.is_empty() {
-        anyhow::bail!(
-            "{}",
-            messages.text(
-                "dat_missing_config",
-                "No DAT collection sources configured. Add DAT and collection pairs under sources: in the YAML config."
-            )
-        );
-    }
-    let mut scans = HashMap::new();
-    for source in &config.sources {
-        let collection = resolve_path(config_path, source.collection.clone())
-            .canonicalize()
-            .with_context(|| {
-                format!("Cannot resolve collection {}", source.collection.display())
-            })?;
-        if let Entry::Vacant(slot) = scans.entry(collection.clone()) {
-            slot.insert(scan_and_print(
-                scanner,
-                &collection,
-                ScanMode::Quick,
-                messages,
-            )?);
-        }
-    }
+    let scans = scan_sources(config, config_path, scanner, ScanMode::Quick, messages)?;
     for source in &config.sources {
         let dat_path = resolve_path(config_path, source.dat.clone());
         let collection = resolve_path(config_path, source.collection.clone()).canonicalize()?;
@@ -371,6 +359,36 @@ fn verify_sources(
         print_dat_report(&report, messages);
     }
     Ok(())
+}
+
+fn scan_sources(
+    config: &Config,
+    config_path: &Path,
+    scanner: &mut Scanner,
+    mode: ScanMode,
+    messages: &Messages,
+) -> Result<HashMap<PathBuf, yaromchecker_core::ScanReport>> {
+    if config.sources.is_empty() {
+        anyhow::bail!(
+            "{}",
+            messages.text(
+                "dat_missing_config",
+                "No DAT collection sources configured. Add DAT and collection pairs under sources: in the YAML config."
+            )
+        );
+    }
+    let mut scans = HashMap::new();
+    for source in &config.sources {
+        let collection = resolve_path(config_path, source.collection.clone())
+            .canonicalize()
+            .with_context(|| {
+                format!("Cannot resolve collection {}", source.collection.display())
+            })?;
+        if let Entry::Vacant(slot) = scans.entry(collection.clone()) {
+            slot.insert(scan_and_print(scanner, &collection, mode, messages)?);
+        }
+    }
+    Ok(scans)
 }
 
 fn entries_in_collection(
@@ -569,6 +587,25 @@ mod tests {
     }
 
     #[test]
+    fn scan_commands_use_configured_sources_without_a_path_argument() {
+        assert!(matches!(
+            Cli::try_parse_from(["yarc", "scan"]).unwrap().command,
+            Command::Scan
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["yarc", "quick"]).unwrap().command,
+            Command::Quick
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["yarc", "full"]).unwrap().command,
+            Command::Full
+        ));
+        for command in ["scan", "quick", "full"] {
+            assert!(Cli::try_parse_from(["yarc", command, "collection"]).is_err());
+        }
+    }
+
+    #[test]
     fn selected_locale_falls_back_to_english_for_missing_keys() {
         let messages = Messages::load("ja").unwrap();
         assert_eq!(messages.text("scan_complete", "fallback"), "Scan complete");
@@ -646,6 +683,75 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("No DAT collection sources"));
+    }
+
+    #[test]
+    fn empty_sources_are_invalid_for_all_scan_modes() {
+        let config: Config =
+            serde_yml::from_str("locale: en\ncache_path: cache.sqlite3\nsources: []\n").unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("yaRomChecker.yaml");
+        let messages = Messages::load("en").unwrap();
+
+        for mode in [ScanMode::Full, ScanMode::Quick] {
+            let cache = ScanCache::open(&temp.path().join(format!("{mode:?}.sqlite3"))).unwrap();
+            let error = scan_sources(
+                &config,
+                &config_path,
+                &mut Scanner::new(cache),
+                mode,
+                &messages,
+            )
+            .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains(messages.text("dat_missing_config", ""))
+            );
+        }
+    }
+
+    #[test]
+    fn configured_sources_scan_unique_collections_in_requested_mode() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = temp.path().join("first");
+        let second = temp.path().join("second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        fs::write(first.join("one.bin"), b"one").unwrap();
+        fs::write(second.join("two.bin"), b"two").unwrap();
+        let config: Config = serde_yml::from_str(
+            "locale: en\ncache_path: cache.sqlite3\nsources:\n  - dat: a.dat\n    collection: first\n  - dat: b.dat\n    collection: first\n  - dat: c.dat\n    collection: second\n",
+        )
+        .unwrap();
+        let config_path = temp.path().join("yaRomChecker.yaml");
+        let messages = Messages::load("en").unwrap();
+        let cache = ScanCache::open(&temp.path().join("cache.sqlite3")).unwrap();
+        let mut scanner = Scanner::new(cache);
+
+        let full = scan_sources(
+            &config,
+            &config_path,
+            &mut scanner,
+            ScanMode::Full,
+            &messages,
+        )
+        .unwrap();
+        assert_eq!(full.len(), 2);
+        assert!(full.values().all(|report| report.hashed_containers == 1));
+        assert!(full.values().all(|report| report.reused_containers == 0));
+
+        let quick = scan_sources(
+            &config,
+            &config_path,
+            &mut scanner,
+            ScanMode::Quick,
+            &messages,
+        )
+        .unwrap();
+        assert_eq!(quick.len(), 2);
+        assert!(quick.values().all(|report| report.hashed_containers == 0));
+        assert!(quick.values().all(|report| report.reused_containers == 1));
     }
 
     #[test]
