@@ -148,6 +148,7 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 | DAT roots (Sources tree)                                                                      |
 | Root: [C:\DATs________________] [Browse] [Remove]                                             |
 | [Add DAT root]  [Check for new DATs]                                                          |
+| Collection root: [C:\ROMs________________________________________________] [Browse...]        |
 | DAT and collection sources                                                                    |
 | Bulk DAT folder: [C:\DATs________________] [Browse] Collections parent: [C:\ROMs___] [Browse]|
 | [Add DAT folder]                                                                              |
@@ -161,9 +162,9 @@ Unchanged in purpose from issue #12. Opened from the menu, not from a primary na
 - Read-only resolved configuration-file path.
 - Locale selector with `en` and `ja`; English is the default.
 - Editable `cache_path` with Browse.
-- Ordered `dat_roots` directory list with Add, Remove, and Browse. Roots are YAML; they do not scan disk by themselves. **Check for new DATs** recurses every configured root using the same skip/error/collection rules as bulk add; relative paths are from each root; collections parent is the bulk-add collections-parent field on this screen.
+- Ordered `dat_roots` directory list with Add, Remove, and Browse. Roots are YAML; they do not scan disk by themselves. **Check for new DATs** recurses every configured root. New `sources[].collection` is `collection_root` plus the path relative to that DAT root plus the sanitized DAT header `name` (file stem if name is missing). **Collection root** is YAML, with Browse on this screen. If it is empty, the button adds nothing.
 - Ordered `sources` list with a DAT path and collection-directory path in every row, plus Add, Remove, and Browse. Paths may be absolute or YAML-relative. The primary-window tree places these rows under `dat_roots`.
-- Bulk add has folder pickers for a DAT folder and collections parent. It **recurses** for `.dat`/`.xml` files, appends one source per readable DAT, and sets collection to `{collections parent}/{relative DAT directory}/{sanitized header name}` (file stem fallback). Each path segment uses the Windows-illegal character sanitizer. Duplicate DAT paths are skipped. Derived collection collisions and unreadable DATs are reported without discarding other additions. It does not create collection directories. The last folder picks are not saved in YAML.
+- Bulk add has a DAT-folder picker and uses the same YAML `collection_root`. It **recurses** for `.dat`/`.xml` files, appends one source per readable DAT, and uses the same collection formula with relative paths from the chosen DAT folder. Duplicate DAT paths are skipped. Derived collection collisions and unreadable DATs are reported without discarding other additions. It does not create collection directories.
 - Save writes settings to YAML only; scan records and hashes remain in the cache.
 - If YAML is missing, Save creates it with the currently displayed settings (including defaults). If it exists, loading preserves its values and Save updates that same file only in response to the explicit Save action; automatic create-if-missing behavior never overwrites existing YAML.
 - Missing DAT paths and invalid or unwritable settings appear inline; missing DATs are warnings so other valid settings can still be saved.

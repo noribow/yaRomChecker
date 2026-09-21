@@ -11,8 +11,9 @@ Layout and screens: [GUI wireframes](GUI_WIREFRAMES.md). Delivery process: [AGEN
 When a behavior is decided (including while drafting a GitHub issue):
 
 1. Update **this file** so the decided rule is stated in the matching section. If the UI layout changes, update [GUI wireframes](GUI_WIREFRAMES.md) in the same change.
-2. Open or refine the issue. Point at this document. Do not leave the decision only in chat or only in the issue body.
-3. Codex implements what this file says. If the issue and this file disagree, **this file wins** after Cursor amends it.
+2. For path layout, tree roots, and Settings actions that write `sources`, include a **diagram** in this file (Mermaid) at the same time as the prose. Chat-only sketches are not the spec.
+3. Open or refine the issue. Point at this document. Do not leave the decision only in chat or only in the issue body.
+4. Codex implements what this file says. If the issue and this file disagree, **this file wins** after Cursor amends it.
 
 Do not delete historical matching rules when adding GUI behavior. Mark later work as later, not as silent omissions.
 
@@ -52,6 +53,7 @@ locale: en
 cache_path: yaRomChecker-cache.sqlite3
 dat_roots:
   - C:\DATs
+collection_root: C:\ROMs
 sources:
   - dat: C:\DATs\Nintendo\NES.dat
     collection: C:\ROMs\Nintendo\Nintendo - Nintendo Entertainment System
@@ -62,6 +64,7 @@ sources:
 | `locale` | `en` (default) or `ja` |
 | `cache_path` | Scan cache file (not settings). May be relative to the YAML file or absolute. |
 | `dat_roots` | Ordered list of DAT **directory** roots for the GUI Sources tree. Relative to the YAML file or absolute. Default empty. Not nested YAML; not a substitute for `sources`. |
+| `collection_root` | Directory root for locally owned ROM collections. Relative to the YAML file or absolute. Default empty. Used when **Check for new DATs** (and bulk add) writes new `sources[].collection` rows. Not a scan-by-itself setting. |
 | `sources` | Ordered list of DAT + collection pairs. Empty list is valid YAML; `yarc verify` then fails with `dat_missing_config`. |
 
 Each source row:
@@ -71,7 +74,7 @@ Each source row:
 | `dat` | User-supplied Logiqx XML or ClrMamePro text DAT. Relative to the YAML file or absolute. |
 | `collection` | Directory of locally owned files for that DAT. Relative to the YAML file or absolute. |
 
-Do not bundle DAT dumps or provide download links. Do not add nested `folder` / `sources` trees in YAML. Matching still uses only `sources` rows. `dat_roots` is display (and Settings) only; `yarc` does not print a tree.
+Do not bundle DAT dumps or provide download links. Do not add nested `folder` / `sources` trees in YAML. Matching still uses only `sources` rows. `dat_roots` and `collection_root` are settings for the GUI tree and for deriving new source rows; `yarc` does not print a tree.
 
 All source collections and extra CLI scan folders share **one** configured scan cache.
 
@@ -196,10 +199,47 @@ Explicit user action only. Selected source, or all sources if the user chooses t
 
 - Read-only resolved config path. Locale `en` / `ja`. Editable `cache_path` with Browse.
 - Ordered `dat_roots` list: directory paths with Add, Remove, and Browse. This is how the user names the Sources-tree roots. Adding a root does not add `sources` rows and does not scan disk.
-- **Check for new DATs** (Settings, next to DAT roots): user-initiated only. Recurse every non-empty configured `dat_roots` directory (YAML order) for `*.dat` / `*.xml` with the same rules as bulk add. Relative collection segments are from **that root**. Collections parent is the Settings bulk-add collections-parent field (required for this action; if empty, show an error and add nothing). Skip DAT paths already in `sources`. Collection collisions and unreadable files are per-DAT errors; keep other additions. Does not create directories. Does not scan on launch or when adding a root. Does not persist the collections-parent path in YAML. Results appear in `settings.sources` until Save.
+- Editable `collection_root` with Browse. Save persists it in YAML. Empty means **Check for new DATs** / bulk add must not invent a collection path.
+- **Check for new DATs** (Settings, next to DAT roots): user-initiated only. Recurse every non-empty configured `dat_roots` directory (YAML order) for `*.dat` / `*.xml`. If `collection_root` is empty, show an error and add nothing. For each new DAT, append a `sources` row:
+
+```text
+sources[].dat        = the DAT file path
+sources[].collection = collection_root / relative_dir / sanitized(NAME)
+```
+
+`relative_dir` is the DAT file’s parent directory relative to **that** `dat_roots` entry (empty if the DAT sits directly in the root). `NAME` is the DAT header `name`; if missing, the DAT file stem. Sanitize **each** of `relative_dir`’s segments and `NAME` with Windows-illegal characters `<>:"/\\|?*` and trailing dots/spaces. Do **not** create directories. Skip DAT paths already in `sources`. Collection collisions and unreadable files are per-DAT errors; keep other additions. Does not scan on launch or when adding a root. Results appear in `settings.sources` until Save.
+
+```mermaid
+flowchart TB
+  clickBtn["Check for new DATs"]
+  roots["Each dat_roots path"]
+  files["New *.dat / *.xml not already in sources"]
+  clickBtn --> roots --> files
+  files --> formula["collection = collection_root / relative_from_dat_root / sanitized NAME"]
+  formula --> yaml["Append sources row then Save writes YAML"]
+```
+
+```mermaid
+flowchart LR
+  subgraph disk ["Example"]
+    datFile["DAT C:\\DATs\\Nintendo\\NES.dat"]
+    hdr["header name Nintendo - NES"]
+  end
+  datRoot["dat_root C:\\DATs"]
+  rel["relative Nintendo"]
+  collRoot["collection_root C:\\ROMs"]
+  out["collection C:\\ROMs\\Nintendo\\Nintendo - NES"]
+  datFile --> datRoot
+  datRoot --> rel
+  datFile --> hdr
+  collRoot --> out
+  rel --> out
+  hdr --> out
+```
+
 - Ordered `sources` table: DAT path, collection path, Add, Remove, Browse. Manual add does **not** rewrite collection from DAT folders; the left tree still nests those rows under `dat_roots`.
-- **Bulk add** (user-initiated): recurse the chosen DAT folder for non-directory `*.dat` / `*.xml` (extension case-insensitive). Append after existing rows. Sort new files by relative path. Skip DAT paths already in `sources` and count skips. Per-file load errors are listed; keep successful rows. Collection path: `{collections parent}/{relative directory from the DAT folder}/{sanitized header name}` (file stem if no name). Sanitize **each path segment** with Windows-illegal characters `<>:"/\\|?*` and trailing dots/spaces. Do **not** create directories. If the derived collection collides with an existing row or another row in the same batch, skip that DAT, report an error, continue. Do not persist the last DAT-folder / collections-parent pick in YAML.
-- Save writes `locale`, `cache_path`, `dat_roots`, and `sources` only.
+- **Bulk add** uses the same collection formula, with `relative_dir` taken from the chosen DAT folder instead of `dat_roots`. It uses YAML `collection_root` (the same Settings field). If `collection_root` is empty, show an error and add nothing. Do not keep a separate unsaved collections-parent path.
+- Save writes `locale`, `cache_path`, `dat_roots`, `collection_root`, and `sources` only.
 - Omitted until later: editing the config-file location, themes, automatic DAT downloads, database-backed settings.
 
 ### Report
