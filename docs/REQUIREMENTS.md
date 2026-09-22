@@ -219,6 +219,25 @@ Design: Markdown/chat wireframes first, then egui. No Figma. Native Win32 stylin
 
 - Shown when a DAT leaf is selected. Set names can come from the DAT before Verify; status and counts are placeholders until Verify.
 - Columns: Name, Status, Present, Missing, MissingInArchive, nodump. Extra is not a set-row count.
+- **Name** cell: a **status icon** immediately before the set title, then a small gap, then the DAT game display title. The icon is **not** a separate column and does **not** change sort keys (Name still sorts the title; Status still sorts the status text).
+- Draw the icon in the GUI (egui painter / shapes). Do not ship photo assets or emoji fonts. About **16×16** CSS-px, vertically centered with the title. Tooltip on the icon equals the Status cell text (`Complete`, `Incomplete`, `MissingSet`, or the not-verified placeholder).
+- Shape **and** color (not color alone):
+
+| Set status | Shape | Fill / stroke | Meaning |
+| --- | --- | --- | --- |
+| Complete | Filled **circle** + check | Green `#2E7D32` (lighter on dark theme) | All required ROMs filled |
+| Incomplete | Filled **diamond** (square rotated 45°) + minus | Amber `#F9A825` | Some required ROMs unfilled |
+| MissingSet | Filled **circle** + X | Red `#C62828` | No required ROM filled |
+| Not verified | Hollow **ring** (empty) | Gray `#9E9E9E` stroke | Verify has not run for this source |
+
+```mermaid
+flowchart LR
+  leaf["DAT leaf selected"]
+  names["Sets Name column"]
+  icon["Status icon then title"]
+  leaf --> names --> icon
+```
+
 - Left-click a column header to sort that column. Same header cycles **ascending → descending → original DAT order**. A different column starts ascending. Name: case-sensitive lexicographic order. Status: displayed text (including not-verified). Counts: numeric; blank (unverified) counts sort as missing and precede numbers when ascending. Sort is session-only; not YAML. Sorting does not Scan or Verify.
 - Selecting a set does not Verify.
 

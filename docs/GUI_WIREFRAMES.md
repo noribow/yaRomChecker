@@ -25,8 +25,8 @@ Do not add extra screens (no dashboard-only home, no Scan full page, no DAT / Ve
 +----------------------------------+-------------------------------------------------------------+
 | Sources (DAT + collection)       | Sets                                                        |
 | v DATs                            | Name              Status      Present Missing …             |
-|     No-Intro Example (12/340)     | Example Game      Complete          2       0               |
-|   v Nintendo                     | Example Game 2    Incomplete        1       1               |
+|     No-Intro Example (12/340)     | ✓ Example Game     Complete          2       0               |
+|   v Nintendo                     | ◆ Example Game 2   Incomplete        1       1               |
 |       NES (10/100)               |                                                             |
 |     ...                          |                                                             |
 | (empty: dat_missing_config)      | Select a DAT in the tree to list its sets.                  |
@@ -74,7 +74,7 @@ The center `|` is one full-height draggable vertical splitter across the four-pa
 - Shown when a DAT is selected in the top-left tree.
 - Lists that DAT's **sets** (per-game set rows from DAT matching rules in REQUIREMENTS).
 - Columns:
-  - **Name** — DAT game display title.
+  - **Name** — status **icon** then DAT game display title (icon is not its own column).
   - **Status** — `Complete`, `Incomplete`, or `MissingSet` after a user-run Verify. Before Verify, status and counts are empty or a not-verified placeholder; do not invent a match.
   - **Counts for each status** on that set: at least Present, Missing, MissingInArchive, and nodump (ROM-side). Extra is not a set-row count.
 - A left-click on a column header sorts its rows. Repeated clicks on the same header cycle ascending, descending, and the exact original DAT row order; clicking another header starts ascending. Name uses case-sensitive lexicographic order, Status uses its displayed text (including `Not verified`), and counts use numeric order. Blank unverified counts are missing values and precede every number when ascending. This sort state lasts for the current session and does not start Scan or Verify.
