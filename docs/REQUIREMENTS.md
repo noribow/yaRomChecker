@@ -245,6 +245,15 @@ flowchart LR
 
 - When the selected set is a ZIP/7z archive or a multi-file set (for example cue + tracks). Hidden or a select-members message for nothing selected or a single loose file.
 - Columns: name, size, mtime, CRC32, MD5, SHA1, last-checked (cache hash time). Do not extract archives to disk.
+- **Display clip:** each **body** cell is a **single line**. If the text does not fit the column’s current width, show a prefix of that text plus ASCII `...` at the end. Do **not** wrap. Do **not** change stored names, hashes, timestamps, or DAT strings; clipping is paint-only. Hover tooltip on a clipped cell shows the full original string. Headers may use the same clip.
+
+```mermaid
+flowchart LR
+  full["Unchanged source string"]
+  cell["Cell width"]
+  shown["Prefix plus ASCII ellipsis"]
+  full --> cell --> shown
+```
 
 ### Status bar
 

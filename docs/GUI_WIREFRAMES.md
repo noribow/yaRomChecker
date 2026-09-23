@@ -87,6 +87,7 @@ The center `|` is one full-height draggable vertical splitter across the four-pa
 - Shown when the selected top-right set is **not a single loose file** (ZIP/7z archive, or a multi-file set such as cue plus tracks).
 - Hidden or showing `Select a multi-file or archive set to list members.` when nothing is selected or the set is one loose file.
 - Columns: **name**, **size**, **mtime**, **hashes** (CRC32, MD5, SHA1), **checked** (last time this entry was hashed into the shared cache). Persist that timestamp on scan if the cache does not already have it.
+- Each body cell is one line. Text that does not fit the column width is shown as a prefix plus ASCII `...`. Stored strings are not modified. A clipped cell’s tooltip is the full original text.
 - Do not extract archives to disk.
 
 ### Status bar (unchanged role)
