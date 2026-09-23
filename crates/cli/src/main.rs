@@ -50,6 +50,17 @@ struct Config {
     collection_root: PathBuf,
     #[serde(default)]
     sources: Vec<Source>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    gui: GuiSettings,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GuiSettings {
+    #[serde(default)]
+    #[allow(dead_code)]
+    member_column_widths: Vec<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -915,6 +926,12 @@ mod tests {
         assert_eq!(config.collection_root, PathBuf::from("collections"));
         assert_eq!(config.sources[0].dat, PathBuf::from("a.dat"));
         assert_eq!(config.sources[0].collection, PathBuf::from("a"));
+
+        let with_gui: Config = serde_yml::from_str(
+            "locale: en\ncache_path: cache.sqlite3\ngui:\n  member_column_widths: [1, 2, 3, 4, 5, 6, 7]\nsources: []\n",
+        )
+        .unwrap();
+        assert_eq!(with_gui.gui.member_column_widths.len(), 7);
 
         let error = serde_yml::from_str::<Config>(
             "locale: en\ncache_path: cache.sqlite3\ndats:\n  - old.dat\n",
