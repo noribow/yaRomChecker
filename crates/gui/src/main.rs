@@ -69,6 +69,39 @@ struct Config {
     collection_root: PathBuf,
     #[serde(default)]
     sources: Vec<Source>,
+    #[serde(default, skip_serializing_if = "GuiSettings::is_empty")]
+    gui: GuiSettings,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct GuiSettings {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    member_column_widths: Vec<f32>,
+}
+
+impl GuiSettings {
+    fn is_empty(&self) -> bool {
+        self.member_column_widths.is_empty()
+    }
+}
+
+const MEMBER_COLUMN_COUNT: usize = 7;
+const MEMBER_COLUMN_MIN_WIDTHS: [f32; MEMBER_COLUMN_COUNT] =
+    [80.0, 48.0, 48.0, 48.0, 48.0, 48.0, 48.0];
+const DEFAULT_MEMBER_COLUMN_WIDTHS: [f32; MEMBER_COLUMN_COUNT] =
+    [120.0, 64.0, 140.0, 72.0, 280.0, 360.0, 140.0];
+
+fn resolved_member_column_widths(raw: &[f32]) -> [f32; MEMBER_COLUMN_COUNT] {
+    if raw.len() == MEMBER_COLUMN_COUNT && raw.iter().all(|width| *width > 0.0) {
+        let mut widths = DEFAULT_MEMBER_COLUMN_WIDTHS;
+        for (index, width) in raw.iter().enumerate() {
+            widths[index] = width.max(MEMBER_COLUMN_MIN_WIDTHS[index]);
+        }
+        widths
+    } else {
+        DEFAULT_MEMBER_COLUMN_WIDTHS
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -875,7 +908,7 @@ impl App {
             .collect()
     }
 
-    fn members_pane(&self, ui: &mut egui::Ui) {
+    fn members_pane(&mut self, ui: &mut egui::Ui) {
         ui.heading(self.messages.text("gui_members"));
         let members = self.selected_members();
         let has_archive = members.iter().any(|row| {
@@ -887,10 +920,19 @@ impl App {
             ui.label(self.messages.text("gui_select_members"));
             return;
         }
-        TableBuilder::new(ui)
-            .striped(true)
-            .column(Column::remainder().at_least(80.0).clip(true))
-            .columns(Column::remainder().at_least(48.0).clip(true), 6)
+        let widths = resolved_member_column_widths(&self.config.gui.member_column_widths);
+        let mut table = TableBuilder::new(ui).striped(true);
+        for (index, width) in widths.iter().enumerate() {
+            table = table.column(
+                Column::initial(*width)
+                    .at_least(MEMBER_COLUMN_MIN_WIDTHS[index])
+                    .clip(true)
+                    .resizable(true),
+            );
+        }
+        let mut collected = [0.0_f32; MEMBER_COLUMN_COUNT];
+        let mut column_index = 0;
+        table
             .header(22.0, |mut header| {
                 for label in [
                     self.messages.text("gui_column_name"),
@@ -902,6 +944,8 @@ impl App {
                     self.messages.text("gui_column_checked"),
                 ] {
                     header.col(|ui| {
+                        collected[column_index] = ui.max_rect().width();
+                        column_index += 1;
                         show_clipped_cell(ui, label);
                     });
                 }
@@ -944,6 +988,13 @@ impl App {
                     });
                 }
             });
+        if collected.iter().all(|width| *width > 0.0) {
+            let next = collected.to_vec();
+            if next != self.config.gui.member_column_widths {
+                self.config.gui.member_column_widths = next.clone();
+                self.settings.gui.member_column_widths = next;
+            }
+        }
     }
 
     fn main_surface(&mut self, ui: &mut egui::Ui) {
@@ -1335,6 +1386,10 @@ impl eframe::App for App {
         }
         self.scan_window(ctx);
     }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        let _ = persist_gui_layout(&self.config_path, &self.config);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1552,6 +1607,16 @@ fn show_clipped_cell(ui: &mut egui::Ui, text: &str) {
     if shown != text {
         response.on_hover_text(text);
     }
+}
+
+fn persist_gui_layout(config_path: &Path, live: &Config) -> Result<()> {
+    let mut on_disk: Config = fs::read_to_string(config_path)
+        .ok()
+        .and_then(|contents| serde_yml::from_str(&contents).ok())
+        .unwrap_or_else(|| live.clone());
+    on_disk.gui.member_column_widths = live.gui.member_column_widths.clone();
+    fs::write(config_path, serde_yml::to_string(&on_disk)?)?;
+    Ok(())
 }
 
 fn sanitize_folder_name(name: &str) -> String {
@@ -1805,6 +1870,58 @@ mod tests {
         assert_eq!(reloaded.collection_root, PathBuf::from("collections"));
         assert!(saved.contains("dat_roots:"));
         assert!(saved.contains("collection_root: collections"));
+    }
+
+    #[test]
+    fn member_column_widths_round_trip_and_invalid_lists_use_defaults() {
+        let config: Config = serde_yml::from_str(
+            "locale: en\ncache_path: cache.sqlite3\ngui:\n  member_column_widths: [120, 64, 140, 72, 280, 360, 140]\nsources: []\n",
+        )
+        .unwrap();
+        assert_eq!(
+            config.gui.member_column_widths,
+            vec![120.0, 64.0, 140.0, 72.0, 280.0, 360.0, 140.0]
+        );
+        let saved = serde_yml::to_string(&config).unwrap();
+        let reloaded: Config = serde_yml::from_str(&saved).unwrap();
+        assert_eq!(
+            reloaded.gui.member_column_widths,
+            config.gui.member_column_widths
+        );
+        assert_eq!(
+            resolved_member_column_widths(&[1.0, 2.0]),
+            DEFAULT_MEMBER_COLUMN_WIDTHS
+        );
+        assert_eq!(
+            resolved_member_column_widths(&[120.0, 64.0, 140.0, 72.0, 280.0, 360.0, -1.0]),
+            DEFAULT_MEMBER_COLUMN_WIDTHS
+        );
+        assert_eq!(
+            resolved_member_column_widths(&[120.0, 10.0, 140.0, 72.0, 280.0, 360.0, 140.0])[1],
+            MEMBER_COLUMN_MIN_WIDTHS[1]
+        );
+    }
+
+    #[test]
+    fn persist_gui_layout_updates_widths_without_dropping_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("yaRomChecker.yaml");
+        fs::write(
+            &path,
+            "locale: en\ncache_path: cache.sqlite3\nsources:\n  - dat: a.dat\n    collection: a\n",
+        )
+        .unwrap();
+        let mut live: Config =
+            serde_yml::from_str("locale: en\ncache_path: cache.sqlite3\nsources: []\n").unwrap();
+        live.gui.member_column_widths = vec![120.0, 64.0, 140.0, 72.0, 280.0, 360.0, 140.0];
+        persist_gui_layout(&path, &live).unwrap();
+        let saved: Config = serde_yml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved.sources.len(), 1);
+        assert_eq!(saved.sources[0].dat, PathBuf::from("a.dat"));
+        assert_eq!(
+            saved.gui.member_column_widths,
+            live.gui.member_column_widths
+        );
     }
 
     #[test]
