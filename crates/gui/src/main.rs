@@ -889,8 +889,8 @@ impl App {
         }
         TableBuilder::new(ui)
             .striped(true)
-            .column(Column::remainder().at_least(100.0))
-            .columns(Column::auto(), 6)
+            .column(Column::remainder().at_least(80.0).clip(true))
+            .columns(Column::remainder().at_least(48.0).clip(true), 6)
             .header(22.0, |mut header| {
                 for label in [
                     self.messages.text("gui_column_name"),
@@ -902,7 +902,7 @@ impl App {
                     self.messages.text("gui_column_checked"),
                 ] {
                     header.col(|ui| {
-                        ui.strong(label);
+                        show_clipped_cell(ui, label);
                     });
                 }
             })
@@ -938,7 +938,7 @@ impl App {
                         };
                         for value in values {
                             row.col(|ui| {
-                                ui.label(value);
+                                show_clipped_cell(ui, &value);
                             });
                         }
                     });
@@ -1508,6 +1508,52 @@ fn source_from_dat(
     Source { dat, collection }
 }
 
+const ASCII_ELLIPSIS: &str = "...";
+
+fn clip_single_line(text: &str, max_width: f32, measure: impl Fn(&str) -> f32) -> String {
+    if max_width <= 0.0 {
+        return String::new();
+    }
+    if measure(text) <= max_width {
+        return text.to_owned();
+    }
+    let ellipsis_width = measure(ASCII_ELLIPSIS);
+    if ellipsis_width > max_width {
+        return ASCII_ELLIPSIS.chars().take(1).collect();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut lo = 0;
+    let mut hi = chars.len();
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let candidate: String = chars[..mid].iter().collect::<String>() + ASCII_ELLIPSIS;
+        if measure(&candidate) <= max_width {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    chars[..lo].iter().collect::<String>() + ASCII_ELLIPSIS
+}
+
+fn show_clipped_cell(ui: &mut egui::Ui, text: &str) {
+    let font_id = egui::TextStyle::Body.resolve(ui.style());
+    let color = ui.visuals().text_color();
+    let max_width = ui.available_width();
+    let shown = clip_single_line(text, max_width, |value| {
+        ui.fonts(|fonts| {
+            fonts
+                .layout_no_wrap(value.to_owned(), font_id.clone(), color)
+                .size()
+                .x
+        })
+    });
+    let response = ui.add(egui::Label::new(&shown).wrap_mode(egui::TextWrapMode::Extend));
+    if shown != text {
+        response.on_hover_text(text);
+    }
+}
+
 fn sanitize_folder_name(name: &str) -> String {
     name.chars()
         .map(|character| match character {
@@ -1633,6 +1679,17 @@ mod tests {
             SetStatusIcon::MissingSet
         );
         assert_eq!(SetStatusIcon::from(None), SetStatusIcon::NotVerified);
+    }
+
+    #[test]
+    fn clip_single_line_leaves_fitting_text_unchanged_and_does_not_mutate_source() {
+        let source = "abcdefghij";
+        let measure = |value: &str| value.chars().count() as f32;
+        assert_eq!(clip_single_line(source, 10.0, measure), source);
+        assert_eq!(source, "abcdefghij");
+        assert_eq!(clip_single_line(source, 8.0, measure), "abcde...");
+        assert_eq!(source, "abcdefghij");
+        assert_eq!(clip_single_line(source, 3.0, measure), "...");
     }
 
     #[test]
