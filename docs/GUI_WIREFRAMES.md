@@ -88,6 +88,7 @@ The center `|` is one full-height draggable vertical splitter across the four-pa
 - Hidden or showing `Select a multi-file or archive set to list members.` when nothing is selected or the set is one loose file.
 - Columns: **name**, **size**, **mtime**, **hashes** (CRC32, MD5, SHA1), **checked** (last time this entry was hashed into the shared cache). Persist that timestamp on scan if the cache does not already have it.
 - Each body cell is one line. Text that does not fit the column width is shown as a prefix plus ASCII `...`. Stored strings are not modified. A clipped cell’s tooltip is the full original text.
+- Column separators are **draggable**. Those widths are stored in YAML `gui.member_column_widths` (Settings Save and clean GUI exit).
 - Do not extract archives to disk.
 
 ### Status bar (unchanged role)

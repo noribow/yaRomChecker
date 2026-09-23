@@ -54,6 +54,8 @@ cache_path: yaRomChecker-cache.sqlite3
 dat_roots:
   - C:\DATs
 collection_root: C:\ROMs
+gui:
+  member_column_widths: [120, 64, 140, 72, 280, 360, 140]
 sources:
   - dat: C:\DATs\Nintendo\NES.dat
     collection: C:\ROMs\Nintendo\Nintendo - Nintendo Entertainment System
@@ -65,6 +67,8 @@ sources:
 | `cache_path` | Scan cache file (not settings). May be relative to the YAML file or absolute. |
 | `dat_roots` | Ordered list of DAT **directory** roots for the GUI Sources tree. Relative to the YAML file or absolute. Default empty. Not nested YAML; not a substitute for `sources`. |
 | `collection_root` | Directory root for locally owned ROM collections. Relative to the YAML file or absolute. Default empty. Used when **Check for new DATs** (and bulk add) writes new `sources[].collection` rows. Not a scan-by-itself setting. |
+| `gui` | Optional GUI layout. Omitted means defaults. CLI loads it and ignores it. |
+| `gui.member_column_widths` | Seven positive widths (egui points), YAML order: name, size, mtime, CRC32, MD5, SHA1, checked. Wrong length or non-positive values are ignored and defaults apply. |
 | `sources` | Ordered list of DAT + collection pairs. Empty list is valid YAML; `yarc verify` then fails with `dat_missing_config`. |
 
 Each source row:
@@ -196,7 +200,7 @@ Design: Markdown/chat wireframes first, then egui. No Figma. Native Win32 stylin
 ### Primary window
 
 - Menu bar: Scan, Verify, Settings, Report; Organize visible and **disabled**. No Main / Scan / DAT / Verify tab strip. No ROM/DAT downloader.
-- Four panes. One full-height **vertical** splitter between left and right. Each column has its own **horizontal** splitter. Every pane keeps a small minimum size. Splitter positions are **session-only** (not YAML).
+- Four panes. One full-height **vertical** splitter between left and right. Each column has its own **horizontal** splitter. Every pane keeps a small minimum size. Splitter positions and Sets sort / Sources expand-collapse are **session-only** (not YAML). **Useful layout the user drags**—member table column widths—**is YAML** (`gui`).
 - Top-left: configured sources as a **folder + DAT file** tree (below). Bottom-left: external media **placeholder** (later). Top-right: sets for the selected DAT. Bottom-right: members of the selected set when it is not a single loose file.
 - Matching runs only when the user asks (menu Verify or equivalent). Selecting a DAT, folder, or set does **not** start Scan or Verify.
 
@@ -246,6 +250,16 @@ flowchart LR
 - When the selected set is a ZIP/7z archive or a multi-file set (for example cue + tracks). Hidden or a select-members message for nothing selected or a single loose file.
 - Columns: name, size, mtime, CRC32, MD5, SHA1, last-checked (cache hash time). Do not extract archives to disk.
 - **Display clip:** each **body** cell is a **single line**. If the text does not fit the column’s current width, show a prefix of that text plus ASCII `...` at the end. Do **not** wrap. Do **not** change stored names, hashes, timestamps, or DAT strings; clipping is paint-only. Hover tooltip on a clipped cell shows the full original string. Headers may use the same clip.
+- **Column width:** the user may **drag** each members-table column separator to resize that column. Widths apply immediately. Persist them in YAML `gui.member_column_widths` (seven numbers, column order above). Load at startup. Write on Settings Save. Also write this `gui` object when the GUI **exits cleanly**, without requiring Settings, so a drag is not lost. Do not Scan or Verify when resizing.
+
+```mermaid
+flowchart LR
+  drag["Drag member column"]
+  mem["In-memory widths"]
+  yaml["YAML gui.member_column_widths"]
+  drag --> mem
+  mem --> yaml
+```
 
 ```mermaid
 flowchart LR
@@ -311,7 +325,7 @@ flowchart LR
 
 - Ordered `sources` table: DAT path, collection path, Add, Remove, Browse. Manual add does **not** rewrite collection from DAT folders; the left tree still nests those rows under `dat_roots`.
 - **Bulk add** uses the same collection formula, with `relative_dir` taken from the chosen DAT folder instead of `dat_roots`. It uses YAML `collection_root` (the same Settings field). If `collection_root` is empty, show an error and add nothing. Do not keep a separate unsaved collections-parent path.
-- Save writes `locale`, `cache_path`, `dat_roots`, `collection_root`, and `sources` only.
+- Save writes `locale`, `cache_path`, `dat_roots`, `collection_root`, `gui`, and `sources`.
 - Omitted until later: editing the config-file location, themes, automatic DAT downloads, database-backed settings.
 
 ### Report
