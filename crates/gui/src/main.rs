@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use eframe::egui::{self, RichText, ScrollArea, TextEdit};
+use eframe::egui::{self, Color32, RichText, ScrollArea, Sense, Stroke, TextEdit, Vec2};
 use egui_extras::{Column, TableBuilder};
 use serde::{Deserialize, Serialize};
 use yaromchecker_core::{
@@ -196,7 +196,93 @@ struct MemberRow {
 struct SetRow {
     name: String,
     status: String,
+    status_icon: SetStatusIcon,
     counts: [Option<usize>; 4],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SetStatusIcon {
+    Complete,
+    Incomplete,
+    MissingSet,
+    NotVerified,
+}
+
+impl From<Option<SetStatus>> for SetStatusIcon {
+    fn from(status: Option<SetStatus>) -> Self {
+        match status {
+            Some(SetStatus::Complete) => Self::Complete,
+            Some(SetStatus::Incomplete) => Self::Incomplete,
+            Some(SetStatus::MissingSet) => Self::MissingSet,
+            None => Self::NotVerified,
+        }
+    }
+}
+
+fn status_icon_color(icon: SetStatusIcon, dark_mode: bool) -> Color32 {
+    match (icon, dark_mode) {
+        (SetStatusIcon::Complete, false) => Color32::from_rgb(0x2e, 0x7d, 0x32),
+        (SetStatusIcon::Incomplete, false) => Color32::from_rgb(0xf9, 0xa8, 0x25),
+        (SetStatusIcon::MissingSet, false) => Color32::from_rgb(0xc6, 0x28, 0x28),
+        (SetStatusIcon::NotVerified, false) => Color32::from_rgb(0x9e, 0x9e, 0x9e),
+        (SetStatusIcon::Complete, true) => Color32::from_rgb(0x66, 0xbb, 0x6a),
+        (SetStatusIcon::Incomplete, true) => Color32::from_rgb(0xff, 0xd5, 0x4f),
+        (SetStatusIcon::MissingSet, true) => Color32::from_rgb(0xef, 0x53, 0x50),
+        (SetStatusIcon::NotVerified, true) => Color32::from_rgb(0xbd, 0xbd, 0xbd),
+    }
+}
+
+fn paint_set_status_icon(ui: &mut egui::Ui, icon: SetStatusIcon, tooltip: &str) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(16.0), Sense::hover());
+    let painter = ui.painter();
+    let center = rect.center();
+    let color = status_icon_color(icon, ui.visuals().dark_mode);
+    let mark = Stroke::new(1.7_f32, Color32::WHITE);
+
+    match icon {
+        SetStatusIcon::Complete => {
+            painter.circle_filled(center, 7.0, color);
+            painter.line_segment(
+                [center + Vec2::new(-3.5, 0.0), center + Vec2::new(-1.0, 2.5)],
+                mark,
+            );
+            painter.line_segment(
+                [center + Vec2::new(-1.0, 2.5), center + Vec2::new(4.0, -3.0)],
+                mark,
+            );
+        }
+        SetStatusIcon::Incomplete => {
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    center + Vec2::new(0.0, -7.0),
+                    center + Vec2::new(7.0, 0.0),
+                    center + Vec2::new(0.0, 7.0),
+                    center + Vec2::new(-7.0, 0.0),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+            painter.line_segment(
+                [center + Vec2::new(-3.5, 0.0), center + Vec2::new(3.5, 0.0)],
+                mark,
+            );
+        }
+        SetStatusIcon::MissingSet => {
+            painter.circle_filled(center, 7.0, color);
+            painter.line_segment(
+                [center + Vec2::new(-3.0, -3.0), center + Vec2::new(3.0, 3.0)],
+                mark,
+            );
+            painter.line_segment(
+                [center + Vec2::new(-3.0, 3.0), center + Vec2::new(3.0, -3.0)],
+                mark,
+            );
+        }
+        SetStatusIcon::NotVerified => {
+            painter.circle_stroke(center, 6.0, Stroke::new(2.0_f32, color));
+        }
+    }
+    response.on_hover_text(tooltip);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -645,6 +731,7 @@ impl App {
                             .map(|value| set_status(&self.messages, value))
                             .unwrap_or_else(|| self.messages.text("gui_not_verified"))
                             .to_owned(),
+                        status_icon: status.into(),
                         counts: [
                             Some(present),
                             Some(missing),
@@ -656,6 +743,7 @@ impl App {
                     SetRow {
                         name: game,
                         status: self.messages.text("gui_not_verified").to_owned(),
+                        status_icon: SetStatusIcon::NotVerified,
                         counts: [None; 4],
                     }
                 }
@@ -715,15 +803,19 @@ impl App {
                 for set in rows {
                     body.row(20.0, |mut row| {
                         row.col(|ui| {
-                            if ui
-                                .selectable_label(
-                                    self.selected_set.as_deref() == Some(&set.name),
-                                    &set.name,
-                                )
-                                .clicked()
-                            {
-                                self.selected_set = Some(set.name.clone());
-                            }
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                paint_set_status_icon(ui, set.status_icon, &set.status);
+                                if ui
+                                    .selectable_label(
+                                        self.selected_set.as_deref() == Some(&set.name),
+                                        &set.name,
+                                    )
+                                    .clicked()
+                                {
+                                    self.selected_set = Some(set.name.clone());
+                                }
+                            });
                         });
                         row.col(|ui| {
                             ui.label(&set.status);
@@ -1521,8 +1613,26 @@ mod tests {
         SetRow {
             name: name.to_owned(),
             status: status.to_owned(),
+            status_icon: SetStatusIcon::NotVerified,
             counts,
         }
+    }
+
+    #[test]
+    fn set_status_icons_map_every_status_and_unverified_to_ring() {
+        assert_eq!(
+            SetStatusIcon::from(Some(SetStatus::Complete)),
+            SetStatusIcon::Complete
+        );
+        assert_eq!(
+            SetStatusIcon::from(Some(SetStatus::Incomplete)),
+            SetStatusIcon::Incomplete
+        );
+        assert_eq!(
+            SetStatusIcon::from(Some(SetStatus::MissingSet)),
+            SetStatusIcon::MissingSet
+        );
+        assert_eq!(SetStatusIcon::from(None), SetStatusIcon::NotVerified);
     }
 
     #[test]
